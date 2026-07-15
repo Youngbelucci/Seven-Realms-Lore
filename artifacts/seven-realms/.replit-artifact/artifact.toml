@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "The Seven Realms: Blood & Ice"
+version = "1.0.0"
+id = "artifacts/seven-realms"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22758
+
+[services.development]
+run = "pnpm --filter @workspace/seven-realms run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/seven-realms", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/seven-realms/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22758"
+BASE_PATH = "/"

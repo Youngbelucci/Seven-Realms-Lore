@@ -1,45 +1,65 @@
-# [Project name]
+# The Seven Realms: Blood & Ice
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A 2D dark-fantasy Action RPG demo playable in the browser, inspired by Diablo and Path of Exile. Set in the frozen Frozen Pass, players control the Caballero del Norte (Knight of the North) fighting through waves of enemies to defeat the Ice Guardian boss.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/seven-realms run dev` — run the game frontend
+- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000, not required for gameplay)
 - `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- Game: React + Vite + HTML5 Canvas 2D (no external game engine)
+- API: Express 5 (health check only, game is frontend-only)
+- DB: PostgreSQL + Drizzle ORM (provisioned but unused in v0.1)
 
-## Where things live
+## Game Controls
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- **WASD** — move the Knight
+- **Mouse / Space / Click** — basic attack
+- **Q** — Golpe Pesado (Heavy Strike)
+- **W** — Ataque Giratorio (Spin Attack)
+- **E** — Carga del Guerrero (Warrior Charge)
+- **R** — Escudo Ancestral (Ancestral Shield)
+- **TAB** — open/close Inventory
 
-## Architecture decisions
+## Where Things Live
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- `artifacts/seven-realms/src/game/` — all game code
+  - `engine.ts` — main game loop, entity management, wave spawning
+  - `player.ts` — Knight class, WASD movement, skills, XP/leveling
+  - `enemy.ts` — Ice Wolf, Fallen Warrior, Spectral Archer AI
+  - `boss.ts` — Ice Guardian with 3 phases
+  - `tilemap.ts` — Frozen Pass map generation and rendering
+  - `hud.ts` — HP/Energy bars, skill hotbar, boss health bar, inventory panel
+  - `loot.ts` — item rarity system, loot tables, weapon/armor drops
+  - `skills.ts` — skill definitions and cooldown logic
+  - `entity.ts` — base entity class with damage, floaters, particles
+  - `types.ts` — shared TypeScript interfaces
+  - `constants.ts` — all tunable game constants
+
+## Architecture Decisions
+
+- Pure Canvas 2D for all game rendering — React only provides the `<canvas>` element shell
+- Entity system with abstract `Entity` base class; all combat goes through `takeDamage()`
+- Loot auto-equips if better than current equipped item (score = damage + defense + crit*50)
+- Boss spawns after 15 kills or player reaching level 4, whichever comes first
+- Wave spawning every 18s with enemy tier scaling by player level
+- localStorage autosave deferred to v0.2
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+A fully playable ARPG demo loop: spawn on the Frozen Pass → fight Ice Wolves, Fallen Warriors, and Spectral Archers → level up, collect loot → face the Ice Guardian boss across 3 phases → victory or defeat screen with restart.
 
-## User preferences
+## User Preferences
 
 _Populate as you build — explicit user instructions worth remembering across sessions._
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
-
-## Pointers
-
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- Do not modify `artifacts/api-server` for game features — game is frontend-only
+- Tile collision uses `isSolid()` from `tilemap.ts` — FOREST and WALL tiles block movement
+- Boss attacks use world-space coordinates; screen conversion happens in `drawAtScreen()`
+- Floaters/particles are stored in world-space and converted in `engine.ts`'s `draw()` loop
