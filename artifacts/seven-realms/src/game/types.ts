@@ -104,6 +104,21 @@ export interface LevelUpNotice {
   maxLife: number;
 }
 
+export interface Torch {
+  x: number;
+  y: number;
+  phase: number; // desync flicker/ember timing between torches
+}
+
+export interface BloodDecal {
+  x: number;
+  y: number;
+  rot: number;
+  life: number;
+  maxLife: number;
+  blobs: { dx: number; dy: number; rr: number }[]; // splatter shape, fixed at spawn
+}
+
 export interface BossAttack {
   type: 'slam' | 'iceStorm' | 'summonWolves';
   x: number;

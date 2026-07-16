@@ -1,0 +1,1 @@
+- [Seven Realms art direction](seven-realms-art-direction.md) — frozen ARPG uses deliberate warm-vs-cold contrast (torchlight/embers/blood over cold base), not all-cold.
