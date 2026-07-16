@@ -2,8 +2,8 @@ import { Entity } from './entity';
 import { FloatingNumber, Particle, Projectile, EnemyState } from './types';
 import { ENEMY_AGGRO_RANGE, ENEMY_ATTACK_RANGE_MELEE, ENEMY_ATTACK_RANGE_RANGED } from './constants';
 import { dist, normalize, clamp, randRange, angleBetween, vecFromAngle } from './utils';
-import { isSolid } from './tilemap';
-import type { TileGrid } from './tilemap';
+import { isSolid } from './world';
+import type { TileGrid } from './world';
 import type { Player } from './player';
 
 export type EnemyType = 'wolf' | 'warrior' | 'archer';

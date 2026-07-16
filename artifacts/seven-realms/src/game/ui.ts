@@ -1,8 +1,13 @@
-import { SkillDef, FloatingNumber, Particle, LevelUpNotice, Item } from './types';
+import { SkillDef, FloatingNumber, Particle, LevelUpNotice } from './types';
 import { getSkillCooldownFraction } from './skills';
-import { DAMAGE_COLORS, RARITY_COLORS } from './constants';
+import { DAMAGE_COLORS } from './constants';
+import { roundRect } from './utils';
+import { renderMinimap } from './minimap';
+import type { BestRecord } from './save';
 import type { Player } from './player';
 import type { Boss } from './boss';
+
+export { renderInventory } from './inventory';
 
 export function renderHUD(
   ctx: CanvasRenderingContext2D,
@@ -162,7 +167,7 @@ export function renderHUD(
   }
 
   // Minimap
-  renderMinimap(ctx, vpW, vpH, player);
+  renderMinimap(ctx, vpW, vpH, player, boss);
 
   // Stats panel (top-right)
   renderStatsPanel(ctx, vpW, player);
@@ -230,20 +235,6 @@ function drawBarGradient(
   ctx.fillText(valueText, x + w - 4, y + h / 2);
 
   ctx.restore();
-}
-
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.arcTo(x + w, y, x + w, y + r, r);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
-  ctx.lineTo(x + r, y + h);
-  ctx.arcTo(x, y + h, x, y + h - r, r);
-  ctx.lineTo(x, y + r);
-  ctx.arcTo(x, y, x + r, y, r);
-  ctx.closePath();
 }
 
 export interface SlotRect { x: number; y: number; w: number; h: number; }
@@ -381,33 +372,6 @@ function renderBossBar(ctx: CanvasRenderingContext2D, vpW: number, boss: Boss): 
   ctx.restore();
 }
 
-function renderMinimap(ctx: CanvasRenderingContext2D, vpW: number, vpH: number, player: Player): void {
-  const mmW = 100, mmH = 75;
-  const mmX = vpW - mmW - 14;
-  const mmY = 14;
-  const mapW = 40 * 48, mapH = 30 * 48;
-
-  ctx.save();
-  ctx.fillStyle = 'rgba(5,10,20,0.8)';
-  roundRect(ctx, mmX - 2, mmY - 2, mmW + 4, mmH + 4, 4);
-  ctx.fill();
-  ctx.strokeStyle = '#334455';
-  ctx.lineWidth = 1;
-  roundRect(ctx, mmX - 2, mmY - 2, mmW + 4, mmH + 4, 4);
-  ctx.stroke();
-
-  // Player dot
-  const px = mmX + (player.x / mapW) * mmW;
-  const py = mmY + (player.y / mapH) * mmH;
-  ctx.fillStyle = '#00ff88';
-  ctx.beginPath();
-  ctx.arc(px, py, 3, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Boss position (if exists)
-  ctx.restore();
-}
-
 function renderStatsPanel(ctx: CanvasRenderingContext2D, vpW: number, player: Player): void {
   ctx.save();
   ctx.fillStyle = 'rgba(8,5,16,0.82)';
@@ -439,124 +403,105 @@ function renderStatsPanel(ctx: CanvasRenderingContext2D, vpW: number, player: Pl
   ctx.restore();
 }
 
-export function renderInventory(
-  ctx: CanvasRenderingContext2D,
-  vpW: number,
-  vpH: number,
-  player: Player,
-  droppedItems: Array<{ item: Item; x: number; y: number }>
-): void {
-  const panelW = 360;
-  const panelH = 340;
-  const px = vpW / 2 - panelW / 2;
-  const py = vpH / 2 - panelH / 2;
+// --- Dungeon hint & end screens ------------------------------------------
 
-  // Overlay
-  ctx.fillStyle = 'rgba(0,0,0,0.6)';
-  ctx.fillRect(0, 0, vpW, vpH);
-
-  // Panel
-  ctx.fillStyle = '#0a0614';
-  roundRect(ctx, px, py, panelW, panelH, 12);
-  ctx.fill();
-  ctx.strokeStyle = '#6622aa';
-  ctx.lineWidth = 2;
-  roundRect(ctx, px, py, panelW, panelH, 12);
-  ctx.stroke();
-
-  // Title
-  ctx.fillStyle = '#cc88ff';
-  ctx.font = 'bold 18px "Georgia", serif';
+export function renderDungeonHint(ctx: CanvasRenderingContext2D, sx: number, sy: number, tick: number, kills: number): void {
+  const pulse = Math.sin(tick * 0.05) * 0.3 + 0.7;
+  ctx.save();
+  ctx.globalAlpha = pulse * 0.7;
+  ctx.fillStyle = '#cc44ff';
+  ctx.font = 'bold 13px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('📦 INVENTARIO', vpW / 2, py + 28);
-
-  // Close hint
-  ctx.fillStyle = '#666666';
-  ctx.font = '12px sans-serif';
-  ctx.fillText('[TAB] Cerrar', vpW / 2, py + 46);
-
-  // Equipment slots
-  renderEquipSlot(ctx, px + 30, py + 60, 'ARMA', player.equippedWeapon, '⚔');
-  renderEquipSlot(ctx, px + 190, py + 60, 'ARMADURA', player.equippedArmor, '🛡');
-
-  // Divider
-  ctx.strokeStyle = '#331155';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(px + 10, py + 180);
-  ctx.lineTo(px + panelW - 10, py + 180);
-  ctx.stroke();
-
-  // Stats summary
-  ctx.fillStyle = '#aaaaaa';
-  ctx.font = '13px sans-serif';
-  ctx.textAlign = 'left';
-  const statLines = [
-    `Nivel: ${player.level}   XP: ${player.xp} / ${player.xpToNext}`,
-    `Daño total: ${player.totalDamage}   Defensa total: ${player.totalDefense}`,
-    `Crítico: ${Math.round(player.totalCrit * 100)}%   Velocidad: ${Math.round(player.stats.speed)}`,
-    `Kills: ${player.kills}   Tiempo: ${player.getElapsedSeconds()}s`,
-  ];
-  statLines.forEach((l, i) => {
-    ctx.fillText(l, px + 18, py + 198 + i * 22);
-  });
-
-  // Ground items hint
-  const nearCount = droppedItems.length;
-  if (nearCount > 0) {
-    ctx.fillStyle = '#ffdd44';
-    ctx.font = 'bold 12px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(`${nearCount} objeto(s) en el suelo — acércate para recoger`, vpW / 2, py + panelH - 18);
-  }
+  ctx.fillText('⚠ Mata 15 enemigos para despertar al Guardián', sx, sy - 55);
+  ctx.fillText(`Kills: ${kills}/15`, sx, sy - 38);
+  ctx.restore();
 }
 
-function renderEquipSlot(
-  ctx: CanvasRenderingContext2D,
-  x: number, y: number,
-  label: string,
-  item: Item | null,
-  icon: string
-): void {
-  const W = 140, H = 110;
-
-  ctx.fillStyle = 'rgba(30,10,50,0.9)';
-  roundRect(ctx, x, y, W, H, 8);
-  ctx.fill();
-  ctx.strokeStyle = item ? RARITY_COLORS[item.rarity] : '#441166';
-  ctx.lineWidth = item ? 2 : 1;
-  roundRect(ctx, x, y, W, H, 8);
-  ctx.stroke();
-
-  ctx.fillStyle = '#cc88ff';
-  ctx.font = 'bold 11px sans-serif';
+function drawBestRecord(ctx: CanvasRenderingContext2D, cx: number, y: number, best: BestRecord): void {
+  if (best.runs <= 0) return;
+  ctx.fillStyle = '#8899bb';
+  ctx.font = '13px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(label, x + W / 2, y + 14);
+  ctx.fillText(
+    `Mejor: Nivel ${best.bestLevel} · ${best.bestKills} kills · ${best.bestTimeSeconds}s  (${best.runs} partidas)`,
+    cx, y,
+  );
+}
 
-  if (item) {
-    const rarColor = RARITY_COLORS[item.rarity];
-    ctx.fillStyle = rarColor;
-    ctx.font = '28px serif';
-    ctx.fillText(icon, x + W / 2, y + 46);
+export function renderGameOver(
+  ctx: CanvasRenderingContext2D,
+  vpW: number, vpH: number,
+  alpha: number,
+  runStats: { kills: number; level: number; time: number },
+  best: BestRecord,
+): number {
+  const a = Math.min(1, alpha + 0.02);
+  ctx.save();
+  ctx.fillStyle = `rgba(10,0,0,${a * 0.82})`;
+  ctx.fillRect(0, 0, vpW, vpH);
 
-    ctx.fillStyle = rarColor;
-    ctx.font = 'bold 10px sans-serif';
-    const nameLines = item.name.length > 18 ? [item.name.slice(0, 18), item.name.slice(18)] : [item.name];
-    nameLines.forEach((nl, i) => ctx.fillText(nl, x + W / 2, y + 60 + i * 13));
+  ctx.globalAlpha = a;
+  ctx.fillStyle = '#cc2233';
+  ctx.font = 'bold 54px "Georgia", serif';
+  ctx.textAlign = 'center';
+  ctx.shadowColor = '#660000';
+  ctx.shadowBlur = 20;
+  ctx.fillText('HAS CAÍDO', vpW / 2, vpH / 2 - 40);
+  ctx.shadowBlur = 0;
 
-    ctx.fillStyle = '#aaaaaa';
-    ctx.font = '10px sans-serif';
-    const stats: string[] = [];
-    if (item.damage != null) stats.push(`+${item.damage} daño`);
-    if (item.defense != null) stats.push(`+${item.defense} def`);
-    if (item.critChance != null) stats.push(`+${Math.round(item.critChance * 100)}% crit`);
-    stats.forEach((s, i) => ctx.fillText(s, x + W / 2, y + H - 28 + i * 14));
-  } else {
-    ctx.fillStyle = '#444444';
-    ctx.font = '32px serif';
-    ctx.fillText(icon, x + W / 2, y + 60);
-    ctx.fillStyle = '#444444';
-    ctx.font = '11px sans-serif';
-    ctx.fillText('Vacío', x + W / 2, y + H - 16);
-  }
+  ctx.fillStyle = '#dddddd';
+  ctx.font = '18px "Georgia", serif';
+  ctx.fillText(
+    `Nivel ${runStats.level} · ${runStats.kills} enemigos · ${runStats.time}s`,
+    vpW / 2, vpH / 2 + 6,
+  );
+
+  drawBestRecord(ctx, vpW / 2, vpH / 2 + 34, best);
+
+  ctx.fillStyle = '#ffcc44';
+  ctx.font = 'bold 16px sans-serif';
+  ctx.fillText('Pulsa [ESPACIO] para renacer', vpW / 2, vpH / 2 + 70);
+  ctx.restore();
+  return a;
+}
+
+export function renderVictory(
+  ctx: CanvasRenderingContext2D,
+  vpW: number, vpH: number,
+  alpha: number,
+  runStats: { kills: number; level: number; time: number },
+  best: BestRecord,
+): number {
+  const a = Math.min(1, alpha + 0.02);
+  ctx.save();
+  ctx.fillStyle = `rgba(4,10,24,${a * 0.82})`;
+  ctx.fillRect(0, 0, vpW, vpH);
+
+  ctx.globalAlpha = a;
+  ctx.fillStyle = '#ffdd66';
+  ctx.font = 'bold 52px "Georgia", serif';
+  ctx.textAlign = 'center';
+  ctx.shadowColor = '#aa8822';
+  ctx.shadowBlur = 24;
+  ctx.fillText('¡VICTORIA!', vpW / 2, vpH / 2 - 40);
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = '#cfe3ff';
+  ctx.font = '18px "Georgia", serif';
+  ctx.fillText('El Guardián del Hielo ha caído', vpW / 2, vpH / 2 + 2);
+
+  ctx.fillStyle = '#dddddd';
+  ctx.font = '16px "Georgia", serif';
+  ctx.fillText(
+    `Nivel ${runStats.level} · ${runStats.kills} enemigos · ${runStats.time}s`,
+    vpW / 2, vpH / 2 + 30,
+  );
+
+  drawBestRecord(ctx, vpW / 2, vpH / 2 + 56, best);
+
+  ctx.fillStyle = '#ffcc44';
+  ctx.font = 'bold 16px sans-serif';
+  ctx.fillText('Pulsa [ESPACIO] para jugar de nuevo', vpW / 2, vpH / 2 + 92);
+  ctx.restore();
+  return a;
 }

@@ -1,1 +1,2 @@
 - [Seven Realms art direction](seven-realms-art-direction.md) — frozen ARPG uses deliberate warm-vs-cold contrast (torchlight/embers/blood over cold base), not all-cold.
+- [Seven Realms architecture](seven-realms-architecture.md) — engine.ts is the central state container; systems are function-modules-on-engine or self-contained classes; save persists progression on any kill, restores gear by direct assignment.
