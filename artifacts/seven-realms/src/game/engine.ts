@@ -411,8 +411,8 @@ export class GameEngine {
     const vpW = canvas.width;
     const vpH = canvas.height;
 
-    // Clear
-    ctx.fillStyle = '#0a0a12';
+    // Clear — dark, near-black background matching the moody map palette
+    ctx.fillStyle = '#0d1018';
     ctx.fillRect(0, 0, vpW, vpH);
 
     if (this.phase === 'playing' || this.phase === 'victory') {
@@ -472,6 +472,9 @@ export class GameEngine {
         ctx.fill();
         ctx.restore();
       }
+
+      // Vignette — radial dark overlay at screen edges for atmosphere
+      this.drawVignette(vpW, vpH);
 
       // Dungeon marker (if boss not yet spawned)
       if (!this.bossSpawned) {
@@ -544,6 +547,25 @@ export class GameEngine {
       ctx.fillText(di.item.name, sx, sy - 12);
     }
     ctx.restore();
+  }
+
+  drawVignette(vpW: number, vpH: number): void {
+    const { ctx } = this;
+    // Radial gradient from transparent centre to dark edges
+    const grad = ctx.createRadialGradient(vpW / 2, vpH / 2, vpH * 0.25, vpW / 2, vpH / 2, vpH * 0.85);
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(0.7, 'rgba(0,0,0,0.18)');
+    grad.addColorStop(1, 'rgba(0,0,0,0.72)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, vpW, vpH);
+
+    // Subtle animated cold-blue edge tint
+    const coldGrad = ctx.createRadialGradient(vpW / 2, vpH / 2, vpH * 0.4, vpW / 2, vpH / 2, vpH * 0.95);
+    const coldAlpha = Math.sin(this.tick * 0.008) * 0.025 + 0.04;
+    coldGrad.addColorStop(0, 'rgba(0,0,0,0)');
+    coldGrad.addColorStop(1, `rgba(30,60,100,${coldAlpha})`);
+    ctx.fillStyle = coldGrad;
+    ctx.fillRect(0, 0, vpW, vpH);
   }
 
   drawDungeonHint(): void {

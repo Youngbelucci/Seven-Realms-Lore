@@ -46,50 +46,83 @@ export function renderHUD(
     ctx.restore();
   }
 
-  // HP bar
-  const barW = 200;
-  const barH = 20;
-  const barX = 14;
-  const barY = vpH - 100;
+  // Bottom-left HUD panel background
+  const barW = 210;
+  const barH = 18;
+  const barX = 60;
+  const panelX = 8;
+  const panelY = vpH - 115;
+  ctx.save();
+  ctx.fillStyle = 'rgba(6,10,18,0.82)';
+  roundRect(ctx, panelX, panelY, barW + 58, 104, 10);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(60,80,120,0.5)';
+  ctx.lineWidth = 1;
+  roundRect(ctx, panelX, panelY, barW + 58, 104, 10);
+  ctx.stroke();
+  ctx.restore();
 
-  drawBar(ctx, barX, barY, barW, barH, player.stats.hp / player.stats.maxHp, '#cc2222', '#440808', '#880808', 'HP');
+  const barY = vpH - 98;
+  drawBarGradient(ctx, barX, barY, barW, barH,
+    player.stats.hp / player.stats.maxHp,
+    '#ff1a1a', '#cc0000', '#7a0000', 'HP',
+    `${Math.ceil(player.stats.hp)}/${player.stats.maxHp}`);
 
-  // Energy bar
-  const ebarY = barY + 28;
-  drawBar(ctx, barX, ebarY, barW, barH, player.stats.energy / player.stats.maxEnergy, '#2266cc', '#081844', '#083088', 'Energía');
+  const ebarY = barY + 26;
+  drawBarGradient(ctx, barX, ebarY, barW, barH,
+    player.stats.energy / player.stats.maxEnergy,
+    '#4488ff', '#1155cc', '#082266', 'EN',
+    `${Math.ceil(player.stats.energy)}/${player.stats.maxEnergy}`);
 
-  // XP bar (thin)
-  const xpY = ebarY + 26;
-  drawBar(ctx, barX, xpY, barW, 8, player.xp / player.xpToNext, '#8844dd', '#220033', '#441166', '');
+  // XP bar (thin, below energy)
+  const xpY = ebarY + 24;
+  ctx.save();
+  ctx.fillStyle = 'rgba(30,10,50,0.8)';
+  roundRect(ctx, barX, xpY, barW, 7, 3);
+  ctx.fill();
+  const xpFrac = Math.min(1, player.xp / player.xpToNext);
+  if (xpFrac > 0) {
+    const xpGrad = ctx.createLinearGradient(barX, 0, barX + barW, 0);
+    xpGrad.addColorStop(0, '#6622cc');
+    xpGrad.addColorStop(1, '#cc44ff');
+    ctx.fillStyle = xpGrad;
+    roundRect(ctx, barX, xpY, barW * xpFrac, 7, 3);
+    ctx.fill();
+  }
+  ctx.fillStyle = 'rgba(130,60,200,0.6)';
+  ctx.font = '9px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(`XP ${player.xp}/${player.xpToNext}`, barX + 4, xpY + 3);
+  ctx.restore();
 
   // Level badge
   ctx.save();
-  ctx.fillStyle = '#1a0a2a';
-  roundRect(ctx, barX, vpH - 148, 44, 40, 8);
+  const lvlGrad = ctx.createLinearGradient(panelX + 4, panelY + 4, panelX + 4, panelY + 95);
+  lvlGrad.addColorStop(0, '#1e0838');
+  lvlGrad.addColorStop(1, '#0e0420');
+  ctx.fillStyle = lvlGrad;
+  roundRect(ctx, panelX + 4, panelY + 4, 48, 95, 8);
   ctx.fill();
-  ctx.strokeStyle = '#8844dd';
-  ctx.lineWidth = 2;
-  roundRect(ctx, barX, vpH - 148, 44, 40, 8);
+  ctx.strokeStyle = '#6622aa';
+  ctx.lineWidth = 1.5;
+  roundRect(ctx, panelX + 4, panelY + 4, 48, 95, 8);
   ctx.stroke();
-  ctx.fillStyle = '#ddaaff';
-  ctx.font = 'bold 11px "Georgia", serif';
+  // Star icon
+  ctx.fillStyle = '#9944dd';
+  ctx.font = '18px serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('NIV', barX + 22, vpH - 140);
+  ctx.fillText('★', panelX + 28, panelY + 28);
+  ctx.fillStyle = '#bbaaff';
+  ctx.font = 'bold 9px sans-serif';
+  ctx.fillText('NIV', panelX + 28, panelY + 48);
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 18px "Georgia", serif';
-  ctx.fillText(String(player.level), barX + 22, vpH - 122);
-  ctx.restore();
-
-  // HP / Energy numbers
-  ctx.save();
-  ctx.font = 'bold 11px sans-serif';
-  ctx.textAlign = 'right';
-  ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#ffbbbb';
-  ctx.fillText(`${Math.ceil(player.stats.hp)}/${player.stats.maxHp}`, barX + barW, barY + barH / 2);
-  ctx.fillStyle = '#aabbff';
-  ctx.fillText(`${Math.ceil(player.stats.energy)}/${player.stats.maxEnergy}`, barX + barW, ebarY + barH / 2);
+  ctx.font = `bold ${player.level >= 10 ? '16' : '20'}px "Georgia", serif`;
+  ctx.shadowColor = '#aa44ff';
+  ctx.shadowBlur = 8;
+  ctx.fillText(String(player.level), panelX + 28, panelY + 68);
+  ctx.shadowBlur = 0;
   ctx.restore();
 
   // Skill hotbar
@@ -146,37 +179,56 @@ export function renderHUD(
   }
 }
 
-function drawBar(
+function drawBarGradient(
   ctx: CanvasRenderingContext2D,
   x: number, y: number, w: number, h: number,
   frac: number,
-  fillColor: string, bgColor: string, borderColor: string,
-  label: string
+  fillColorA: string, fillColorB: string, bgColor: string,
+  label: string, valueText: string
 ): void {
   ctx.save();
+  const r = h / 2;
+
   // Background
   ctx.fillStyle = bgColor;
-  roundRect(ctx, x, y, w, h, h / 2);
+  roundRect(ctx, x, y, w, h, r);
   ctx.fill();
-  // Fill
+
+  // Filled portion with gradient
+  const filled = Math.max(h, w * Math.min(1, frac));
   if (frac > 0) {
-    ctx.fillStyle = fillColor;
-    roundRect(ctx, x, y, Math.max(h, w * Math.min(1, frac)), h, h / 2);
+    const grad = ctx.createLinearGradient(x, y, x, y + h);
+    grad.addColorStop(0, fillColorA);
+    grad.addColorStop(1, fillColorB);
+    ctx.fillStyle = grad;
+    roundRect(ctx, x, y, filled, h, r);
+    ctx.fill();
+
+    // Shine streak on top third
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    roundRect(ctx, x, y, filled, Math.ceil(h / 3), r);
     ctx.fill();
   }
+
   // Border
-  ctx.strokeStyle = borderColor;
-  ctx.lineWidth = 1.5;
-  roundRect(ctx, x, y, w, h, h / 2);
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = 1;
+  roundRect(ctx, x, y, w, h, r);
   ctx.stroke();
-  // Label
-  if (label) {
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 11px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(label, x + 8, y + h / 2);
-  }
+
+  // Label (left)
+  ctx.fillStyle = 'rgba(255,255,255,0.75)';
+  ctx.font = `bold ${h - 5}px sans-serif`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, x + 6, y + h / 2);
+
+  // Value (right)
+  ctx.fillStyle = 'rgba(255,255,255,0.65)';
+  ctx.font = `${h - 6}px sans-serif`;
+  ctx.textAlign = 'right';
+  ctx.fillText(valueText, x + w - 4, y + h / 2);
+
   ctx.restore();
 }
 
