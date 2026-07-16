@@ -6,7 +6,8 @@ import { Boss } from './boss';
 import { rollLoot } from './loot';
 import { renderHUD, renderInventory, getSkillSlotRects } from './hud';
 import {
-  FloatingNumber, Particle, DroppedItem, Projectile, LevelUpNotice, Input, GamePhase
+  FloatingNumber, Particle, DroppedItem, Projectile, LevelUpNotice, Input, GamePhase,
+  Torch, BloodDecal
 } from './types';
 import { dist, clamp, circlesOverlap, randRange } from './utils';
 import { MAP_W, MAP_H, TILE_SIZE, WAVE_INTERVAL, MAX_ENEMIES_ON_MAP } from './constants';
@@ -29,6 +30,8 @@ export class GameEngine {
   particles: Particle[] = [];
   projectiles: Projectile[] = [];
   snow: { x: number; y: number; r: number; spd: number; sway: number; phase: number; alpha: number }[] = [];
+  torches: Torch[] = [];
+  decals: BloodDecal[] = [];
   levelUpNotices: LevelUpNotice[] = [];
 
   input: Input;
@@ -79,7 +82,45 @@ export class GameEngine {
       ('ontouchstart' in window || (navigator.maxTouchPoints ?? 0) > 0);
 
     this.spawnInitialEnemies();
+    this.initTorches();
     this.attachListeners();
+  }
+
+  // Scatter warm torches around the map (flanking the dungeon and along the
+  // approach) for Diablo-style pools of light against the frozen dark.
+  initTorches(): void {
+    this.torches = [];
+    const candidates: [number, number][] = [
+      [16, 25], [24, 25],           // flank the dungeon gate
+      [18, 22], [22, 22],           // the approach
+      [10, 14], [30, 12], [14, 20], // scattered across the field
+      [28, 20], [20, 9], [33, 22],
+    ];
+    for (const [c, r] of candidates) {
+      const x = c * TILE_SIZE + TILE_SIZE / 2;
+      const y = r * TILE_SIZE + TILE_SIZE / 2;
+      if (!isSolid(this.grid, x, y)) {
+        this.torches.push({ x, y, phase: Math.random() * Math.PI * 2 });
+      }
+    }
+  }
+
+  // Leave a lingering blood pool where something dies (fades over ~20s).
+  spawnBloodDecal(x: number, y: number, big: boolean): void {
+    const n = big ? 5 : 3;
+    const spread = big ? 1.4 : 1;
+    const blobs: { dx: number; dy: number; rr: number }[] = [];
+    for (let i = 0; i < n; i++) {
+      blobs.push({
+        dx: randRange(-10, 10) * spread,
+        dy: randRange(-7, 7) * spread,
+        rr: randRange(3, big ? 9 : 6),
+      });
+    }
+    const maxLife = big ? 1400 : 800;
+    this.decals.push({ x, y, rot: Math.random() * Math.PI, life: maxLife, maxLife, blobs });
+    // Bound the decal count so long runs never accumulate unboundedly
+    while (this.decals.length > 46) this.decals.shift();
   }
 
   spawnInitialEnemies(): void {
@@ -402,6 +443,7 @@ export class GameEngine {
     const justDead = this.enemies.filter(e => e.dead && !('_processed' in e));
     for (const e of justDead) {
       (e as any)._processed = true;
+      this.spawnBloodDecal(e.x, e.y, e.tier >= 2);
       const loot = rollLoot(e.tier);
       if (loot) {
         this.droppedItems.push({ item: loot, x: e.x + randRange(-20, 20), y: e.y + randRange(-20, 20), glowPhase: 0 });
@@ -502,6 +544,26 @@ export class GameEngine {
     }
     this.particles = this.particles.filter(p => p.life > 0);
 
+    // Torch embers — spill glowing sparks from on-screen torches
+    const vpW = this.canvas.width, vpH = this.canvas.height;
+    for (const t of this.torches) {
+      const sx = t.x - this.camX, sy = t.y - this.camY;
+      if (sx < -40 || sx > vpW + 40 || sy < -40 || sy > vpH + 40) continue;
+      if (Math.random() < 0.09) {
+        this.particles.push({
+          x: t.x + randRange(-3, 3), y: t.y - 38,
+          vx: randRange(-0.3, 0.3), vy: randRange(-1.3, -0.5),
+          life: randRange(20, 42), maxLife: 42,
+          color: Math.random() < 0.5 ? '#ffb347' : '#ff7020',
+          size: randRange(1, 2.4),
+        });
+      }
+    }
+
+    // Fade & expire blood decals
+    for (const d of this.decals) d.life--;
+    this.decals = this.decals.filter(d => d.life > 0);
+
     // Level up notice update
     for (const n of this.levelUpNotices) {
       n.life--;
@@ -576,14 +638,21 @@ export class GameEngine {
       // Map
       renderMap(ctx, this.grid, this.camX, this.camY, vpW, vpH, this.tick);
 
+      // Blood pools sit on the ground, above the tiles but below everything else
+      this.drawDecals(vpW, vpH);
+
       // Dropped items
       for (const di of this.droppedItems) {
         this.drawDroppedItem(di);
       }
 
-      // Drifting ground mist for depth, then a warm hero light over the floor
+      // Drifting ground mist for depth, then warm light pools over the floor
       this.drawGroundMist(vpW, vpH);
+      this.drawTorchLights(vpW, vpH);
       this.drawHeroLight(this.player.x - this.camX, this.player.y - this.camY);
+
+      // Torch props (posts + flames) anchor into the ground before entities
+      this.drawTorchProps(vpW, vpH);
 
       // Entities (sorted by Y for depth)
       const entities = [
@@ -731,6 +800,109 @@ export class GameEngine {
     ctx.arc(px, py, 170, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
+  }
+
+  // Warm, flickering pools of torchlight on the floor (Diablo-style contrast
+  // against the cold dark). Additive so the light stacks over the ground.
+  drawTorchLights(vpW: number, vpH: number): void {
+    const { ctx } = this;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const t of this.torches) {
+      const sx = t.x - this.camX, sy = t.y - this.camY;
+      if (sx < -260 || sx > vpW + 260 || sy < -260 || sy > vpH + 260) continue;
+      const flicker =
+        0.78 + Math.sin(this.tick * 0.3 + t.phase) * 0.12 + Math.sin(this.tick * 0.71 + t.phase * 2) * 0.08;
+      const radius = 155 * flicker;
+      const g = ctx.createRadialGradient(sx, sy - 8, 6, sx, sy - 8, radius);
+      g.addColorStop(0, `rgba(255,175,85,${0.34 * flicker})`);
+      g.addColorStop(0.5, `rgba(205,110,45,${0.12 * flicker})`);
+      g.addColorStop(1, 'rgba(120,60,20,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(sx, sy - 8, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // Torch posts, iron bowls and dancing flames.
+  drawTorchProps(vpW: number, vpH: number): void {
+    const { ctx } = this;
+    for (const t of this.torches) {
+      const sx = t.x - this.camX, sy = t.y - this.camY;
+      if (sx < -60 || sx > vpW + 60 || sy < -60 || sy > vpH + 60) continue;
+      const flicker = 0.8 + Math.sin(this.tick * 0.4 + t.phase) * 0.2;
+      ctx.save();
+      ctx.translate(sx, sy);
+
+      // Ground shadow of the post
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.beginPath();
+      ctx.ellipse(0, 2, 9, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Wooden post with a lit edge
+      ctx.fillStyle = '#2b2018';
+      ctx.fillRect(-3, -30, 6, 32);
+      ctx.fillStyle = '#3a2c20';
+      ctx.fillRect(-3, -30, 2, 32);
+
+      // Iron fire-bowl
+      ctx.fillStyle = '#3a3a42';
+      ctx.beginPath();
+      ctx.moveTo(-7, -30);
+      ctx.lineTo(7, -30);
+      ctx.lineTo(4, -37);
+      ctx.lineTo(-4, -37);
+      ctx.closePath();
+      ctx.fill();
+
+      // Flame
+      const fy = -37;
+      const fh = 14 * flicker;
+      const fg = ctx.createRadialGradient(0, fy - fh * 0.3, 1, 0, fy - fh * 0.3, fh);
+      fg.addColorStop(0, 'rgba(255,244,190,0.95)');
+      fg.addColorStop(0.4, 'rgba(255,165,55,0.9)');
+      fg.addColorStop(1, 'rgba(200,60,20,0)');
+      ctx.fillStyle = fg;
+      ctx.beginPath();
+      ctx.moveTo(-5, fy);
+      ctx.quadraticCurveTo(-4, fy - fh, 0, fy - fh - 4);
+      ctx.quadraticCurveTo(4, fy - fh, 5, fy);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.restore();
+    }
+  }
+
+  // Lingering blood pools on the ground.
+  drawDecals(vpW: number, vpH: number): void {
+    const { ctx } = this;
+    for (const d of this.decals) {
+      const sx = d.x - this.camX, sy = d.y - this.camY;
+      if (sx < -40 || sx > vpW + 40 || sy < -40 || sy > vpH + 40) continue;
+      const fade = Math.min(1, d.life / (d.maxLife * 0.35)); // fade out over the final 35%
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(d.rot);
+      // Splatter
+      ctx.globalAlpha = 0.5 * fade;
+      ctx.fillStyle = '#5a0d0d';
+      for (const b of d.blobs) {
+        ctx.beginPath();
+        ctx.ellipse(b.dx, b.dy, b.rr, b.rr * 0.7, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // Darker central pool
+      ctx.globalAlpha = 0.6 * fade;
+      ctx.fillStyle = '#3a0808';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 6, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
   }
 
   drawGroundMist(vpW: number, vpH: number): void {
@@ -1006,6 +1178,7 @@ export class GameEngine {
     this.floaters = [];
     this.particles = [];
     this.projectiles = [];
+    this.decals = [];
     this.levelUpNotices = [];
     this.tick = 0;
     this.phase = 'playing';
@@ -1015,6 +1188,7 @@ export class GameEngine {
     this.lastWaveTime = Date.now();
     this.grid = generateMap();
     this.spawnInitialEnemies();
+    this.initTorches();
     this.input.keys.clear();
     this.input.moveVec = { x: 0, y: 0 };
     this.input.mouseDown = false;
