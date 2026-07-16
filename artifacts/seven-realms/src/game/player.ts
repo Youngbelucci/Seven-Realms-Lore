@@ -3,8 +3,8 @@ import { FloatingNumber, Particle, Item, SkillDef, Input, BossAttack } from './t
 import { PLAYER_SIZE, PLAYER_BASE_SPEED, PLAYER_BASE_HP, PLAYER_BASE_ENERGY, MAP_W, MAP_H, ENERGY_REGEN } from './constants';
 import { createSkills, isSkillReady, getSkillCooldownFraction } from './skills';
 import { clamp, angleBetween, circlesOverlap, normalize, vecFromAngle, randRange } from './utils';
-import { isSolid } from './tilemap';
-import type { TileGrid } from './tilemap';
+import { isSolid } from './world';
+import type { TileGrid } from './world';
 import { getKnightSprite } from './sprites';
 
 export class Player extends Entity {
