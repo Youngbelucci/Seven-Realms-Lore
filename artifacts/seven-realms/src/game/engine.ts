@@ -15,7 +15,7 @@ import {
 } from './types';
 import { dist, circlesOverlap } from './utils';
 import { MAP_W, MAP_H } from './constants';
-import { updateCamera } from './camera';
+import { updateCamera, addCameraShake } from './camera';
 import { Lighting } from './lighting';
 import { Weather } from './weather';
 import {
@@ -55,6 +55,11 @@ export class GameEngine {
   input: Input;
   camX: number = 0;
   camY: number = 0;
+  baseCamX: number = 0;
+  baseCamY: number = 0;
+  cameraShakeStrength: number = 0;
+  cameraShakeFrames: number = 0;
+  cameraShakeMaxFrames: number = 12;
   tick: number = 0;
 
   phase: GamePhase = 'playing';
@@ -375,6 +380,9 @@ export class GameEngine {
         audio.play('swing');
       }
     }
+    if (this.player.attackFrames > this.prevAttackFrames && this.prevAttackFrames === 0) {
+      addCameraShake(this, 1.5, 6);
+    }
     this.prevAttackFrames = this.player.attackFrames;
 
     // Player update — pass the snapshot of justPressed for this frame
@@ -688,6 +696,10 @@ export class GameEngine {
     this.gameOverAlpha = 0;
     this.victoryAlpha = 0;
     this.prevAttackFrames = 0;
+    this.baseCamX = 0;
+    this.baseCamY = 0;
+    this.cameraShakeFrames = 0;
+    this.cameraShakeStrength = 0;
     this.lastWaveTime = Date.now();
     this.grid = generateMap();
     spawnInitialEnemies(this);

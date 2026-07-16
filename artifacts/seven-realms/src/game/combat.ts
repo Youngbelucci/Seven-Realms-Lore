@@ -4,6 +4,9 @@
 import { dist, circlesOverlap, randRange } from './utils';
 import { Enemy } from './enemy';
 import { audio } from './audio';
+import { addCameraShake } from './camera';
+import { spawnHitBurst, spawnSlashTrail } from './particles';
+import { DAMAGE_COLORS } from './constants';
 import type { GameEngine } from './engine';
 
 export function hitEntitiesInArc(
@@ -17,6 +20,8 @@ export function hitEntitiesInArc(
   ];
 
   let landed = false;
+  let hitCount = 0;
+  spawnSlashTrail(g.particles, ax, ay, angle, isCrit ? '#ffe66d' : '#d8ecff');
   for (const target of targets) {
     const d = dist({ x: ax, y: ay }, { x: target.x, y: target.y });
     if (d > range + target.size) continue;
@@ -24,7 +29,9 @@ export function hitEntitiesInArc(
     if (arcWidth >= Math.PI * 2) {
       // Full circle (spin)
       target.takeDamage(damage, 'physical', isCrit, g.floaters, g.particles);
+      spawnHitBurst(g.particles, target.x, target.y, DAMAGE_COLORS.physical, isCrit);
       landed = true;
+      hitCount++;
     } else {
       // Directional arc
       const toTarget = Math.atan2(target.y - ay, target.x - ax);
@@ -33,7 +40,9 @@ export function hitEntitiesInArc(
       while (diff < -Math.PI) diff += Math.PI * 2;
       if (Math.abs(diff) <= arcWidth) {
         target.takeDamage(damage, 'physical', isCrit, g.floaters, g.particles);
+        spawnHitBurst(g.particles, target.x, target.y, DAMAGE_COLORS.physical, isCrit);
         landed = true;
+        hitCount++;
         if (target instanceof Enemy && target.stunFrames !== undefined) {
           target.stunFrames = 15;
         }
@@ -41,7 +50,10 @@ export function hitEntitiesInArc(
     }
   }
 
-  if (landed) audio.play(isCrit ? 'crit' : 'hit');
+  if (landed) {
+    audio.play(isCrit ? 'crit' : 'hit');
+    addCameraShake(g, isCrit ? 7 : Math.min(4.5, 2.5 + hitCount * 0.6), isCrit ? 14 : 9);
+  }
 }
 
 export function updateProjectiles(g: GameEngine, dt: number): void {
