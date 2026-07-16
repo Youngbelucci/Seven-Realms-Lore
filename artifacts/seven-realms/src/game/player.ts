@@ -5,6 +5,7 @@ import { createSkills, isSkillReady, getSkillCooldownFraction } from './skills';
 import { clamp, angleBetween, circlesOverlap, normalize, vecFromAngle, randRange } from './utils';
 import { isSolid } from './tilemap';
 import type { TileGrid } from './tilemap';
+import { getKnightSprite } from './sprites';
 
 export class Player extends Entity {
   skills: SkillDef[] = createSkills();
@@ -262,6 +263,76 @@ export class Player extends Entity {
     ctx.restore();
 
     ctx.scale(squash, 1 / squash);
+
+    const sprite = getKnightSprite();
+    if (sprite) {
+      // — IMAGE SPRITE (main character) —
+      const targetH = 68;
+      const targetW = targetH * (sprite.width / sprite.height);
+      const bob = isMoving ? Math.sin(this.runPhase * 2) * 1.5 : 0;
+      const feetY = S + 2;
+      ctx.save();
+      // Flip horizontally when facing left
+      if (Math.cos(this.facing) < 0) ctx.scale(-1, 1);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(sprite, -targetW / 2, feetY - targetH + bob, targetW, targetH);
+      ctx.restore();
+
+      // Hit flash — red glow over the silhouette
+      if (flash) {
+        ctx.save();
+        const fg = ctx.createRadialGradient(0, -targetH * 0.35, 4, 0, -targetH * 0.35, targetH * 0.6);
+        fg.addColorStop(0, 'rgba(255,70,70,0.6)');
+        fg.addColorStop(1, 'rgba(255,0,0,0)');
+        ctx.fillStyle = fg;
+        ctx.beginPath();
+        ctx.ellipse(0, -targetH * 0.35, targetW * 0.5, targetH * 0.6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // Spin attack ring (kept in sprite mode)
+      if (this.spinFrames > 0) {
+        const spinAlpha = this.spinFrames / 25;
+        ctx.strokeStyle = `rgba(255,140,0,${spinAlpha * 0.9})`;
+        ctx.lineWidth = 6;
+        ctx.shadowColor = '#ff8800';
+        ctx.shadowBlur = 12;
+        ctx.beginPath();
+        ctx.arc(0, 0, S + 18, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = `rgba(255,220,80,${spinAlpha * 0.6})`;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(0, 0, S + 26, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      ctx.restore(); // matches the translate() save
+
+      // — ATTACK SWING ARC (screen space) —
+      if (this.isAttacking && this.attackFrames > 0) {
+        const swingAlpha = this.attackFrames / 11;
+        ctx.save();
+        ctx.globalAlpha = swingAlpha;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 4;
+        ctx.shadowColor = '#88ccff';
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.arc(sx, sy, this.attackRange, this.attackAngle - 0.65, this.attackAngle + 0.65);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = 'rgba(200,230,255,0.4)';
+        ctx.lineWidth = 8;
+        ctx.beginPath();
+        ctx.arc(sx, sy, this.attackRange + 4, this.attackAngle - 0.5, this.attackAngle + 0.5);
+        ctx.stroke();
+        ctx.restore();
+      }
+      return;
+    }
 
     // — LEGS (behind body, left/right feet) —
     if (!this.chargeActive) {
