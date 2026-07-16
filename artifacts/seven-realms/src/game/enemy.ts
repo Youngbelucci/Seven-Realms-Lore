@@ -3,6 +3,7 @@ import { FloatingNumber, Particle, Projectile, EnemyState } from './types';
 import { ENEMY_AGGRO_RANGE, ENEMY_ATTACK_RANGE_MELEE, ENEMY_ATTACK_RANGE_RANGED } from './constants';
 import { dist, normalize, clamp, randRange, angleBetween, vecFromAngle } from './utils';
 import { isSolid } from './world';
+import { assets } from './assets';
 import type { TileGrid } from './world';
 import type { Player } from './player';
 
@@ -151,12 +152,34 @@ export class Enemy extends Entity {
     ctx.save();
     ctx.translate(sx, sy);
 
-    if (this.type === 'wolf') this.drawWolf(ctx, flash);
+    const sprite = assets.getImage(`enemies/${this.type}`);
+    if (sprite) {
+      this.drawSpriteImage(ctx, sprite, flash);
+    } else if (this.type === 'wolf') this.drawWolf(ctx, flash);
     else if (this.type === 'warrior') this.drawWarrior(ctx, flash);
     else this.drawArcher(ctx, flash);
 
     ctx.restore();
     this.drawHealthBar(ctx, sx, sy);
+  }
+
+  // — IMAGE SPRITE — drawn when the asset pipeline has the art; otherwise the
+  // procedural drawXxx fallbacks below keep working exactly as before.
+  private drawSpriteImage(ctx: CanvasRenderingContext2D, sprite: HTMLImageElement, flash: boolean): void {
+    const targetH = this.size * 3.4;
+    const targetW = targetH * (sprite.width / sprite.height);
+    const bob = Math.sin(this.movePhase) * 2;
+    const feetY = this.size + 2;
+    // Mirror the art to match movement direction (wolf art faces left; the
+    // humanoids face slightly right).
+    const facingRight = Math.cos(this.facing) >= 0;
+    const flip = this.type === 'wolf' ? facingRight : !facingRight;
+
+    ctx.save();
+    if (flip) ctx.scale(-1, 1);
+    if (flash) ctx.filter = 'brightness(1.9) saturate(1.4)';
+    ctx.drawImage(sprite, -targetW / 2, feetY - targetH + bob, targetW, targetH);
+    ctx.restore();
   }
 
   private drawWolf(ctx: CanvasRenderingContext2D, flash: boolean): void {

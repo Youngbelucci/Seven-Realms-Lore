@@ -27,6 +27,7 @@ import {
   DUNGEON_X, DUNGEON_Y,
 } from './game';
 import { audio } from './audio';
+import { assets } from './assets';
 import { loadRun, hasRun, clearRun, recordResult, loadBest } from './save';
 import type { RunSnapshot, BestRecord } from './save';
 
@@ -107,6 +108,13 @@ export class GameEngine {
     this.touchEnabled =
       typeof window !== 'undefined' &&
       ('ontouchstart' in window || (navigator.maxTouchPoints ?? 0) > 0);
+
+    // Kick off sprite loading up front so art pops in before combat starts
+    assets.preload([
+      'characters/knight',
+      'enemies/wolf', 'enemies/warrior', 'enemies/archer',
+      'bosses/guardian',
+    ]);
 
     spawnInitialEnemies(this);
     this.lighting.init(this.grid);

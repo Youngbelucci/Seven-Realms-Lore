@@ -4,6 +4,7 @@ import { BOSS_HP, BOSS_PHASE2_HP, BOSS_PHASE3_HP, BOSS_SIZE } from './constants'
 import { dist, angleBetween, vecFromAngle, randRange, circlesOverlap } from './utils';
 import type { Player } from './player';
 import type { Enemy, EnemyType } from './enemy';
+import { assets } from './assets';
 
 type BossPhase = 1 | 2 | 3;
 
@@ -286,6 +287,32 @@ export class Boss extends Entity {
       ctx.rotate(a + Math.PI / 4);
       ctx.fillRect(-4, -8, 8, 16);
       ctx.restore();
+    }
+
+    // — IMAGE SPRITE — used when the asset pipeline has the guardian art;
+    // otherwise fall through to the procedural armored-giant drawing.
+    const sprite = assets.getImage('bosses/guardian');
+    if (sprite) {
+      const targetH = S * 3.6;
+      const targetW = targetH * (sprite.width / sprite.height);
+      ctx.save();
+      if (flash) ctx.filter = 'brightness(1.9) saturate(1.3)';
+      ctx.drawImage(sprite, -targetW / 2, S - targetH, targetW, targetH);
+      ctx.restore();
+
+      // Phase indicator crown (kept on top of the sprite)
+      if (this.phase >= 2) {
+        for (let i = 0; i < 5; i++) {
+          const a = (i / 5) * Math.PI * 2;
+          ctx.fillStyle = this.phase === 3 ? '#ff44ff' : '#4499ff';
+          ctx.beginPath();
+          ctx.arc(Math.cos(a) * (S - 4), Math.sin(a) * (S - 4) - 4, 4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      ctx.restore();
+      return;
     }
 
     // Main body - armor plated giant
