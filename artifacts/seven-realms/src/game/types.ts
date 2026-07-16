@@ -95,6 +95,12 @@ export interface Particle {
   maxLife: number;
   color: string;
   size: number;
+  kind?: 'orb' | 'spark' | 'blood' | 'slash';
+  rotation?: number;
+  spin?: number;
+  drag?: number;
+  gravity?: number;
+  length?: number;
 }
 
 export interface LevelUpNotice {
