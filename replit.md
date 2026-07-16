@@ -29,7 +29,8 @@ A 2D dark-fantasy Action RPG demo playable in the browser, inspired by Diablo an
 
 - `artifacts/seven-realms/src/game/` — all game code
   - `engine.ts` — main game loop, entity management, wave spawning
-  - `player.ts` — Knight class, WASD movement, skills, XP/leveling
+  - `player.ts` — Knight class, WASD movement, skills, XP/leveling. Draws the `public/knight.png` pixel-art sprite (via `sprites.ts`), with procedural drawing kept as a fallback until the image loads
+  - `sprites.ts` — lazy image-sprite loader (served from `public/`)
   - `enemy.ts` — Ice Wolf, Fallen Warrior, Spectral Archer AI
   - `boss.ts` — Ice Guardian with 3 phases
   - `tilemap.ts` — Frozen Pass map generation and rendering
