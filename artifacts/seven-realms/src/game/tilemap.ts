@@ -137,10 +137,6 @@ function drawTile(
         ctx.fillRect(x + sx2, y + sy2, 2, 2);
       }
 
-      // Occasional subtle grid line for tile definition
-      ctx.strokeStyle = 'rgba(20,28,40,0.5)';
-      ctx.lineWidth = 0.5;
-      ctx.strokeRect(x + 0.5, y + 0.5, S - 1, S - 1);
       break;
     }
 
@@ -163,9 +159,6 @@ function drawTile(
       ctx.lineTo(cx1 + ((seed >> 8) % 16) - 8, cy1 + ((seed >> 12) % 20) + 4);
       ctx.stroke();
 
-      ctx.strokeStyle = 'rgba(20,28,40,0.4)';
-      ctx.lineWidth = 0.5;
-      ctx.strokeRect(x + 0.5, y + 0.5, S - 1, S - 1);
       break;
     }
 
@@ -187,9 +180,6 @@ function drawTile(
       );
       ctx.fill();
 
-      ctx.strokeStyle = 'rgba(15,22,32,0.6)';
-      ctx.lineWidth = 0.5;
-      ctx.strokeRect(x + 0.5, y + 0.5, S - 1, S - 1);
       break;
     }
 
@@ -212,8 +202,8 @@ function drawTile(
       ctx.fillStyle = `rgba(150,220,255,${streakAlpha})`;
       ctx.fillRect(x + 6, y + 6, S / 3, 3);
 
-      // Border glow
-      ctx.strokeStyle = `rgba(60,160,200,0.35)`;
+      // Soft border glow
+      ctx.strokeStyle = `rgba(60,160,200,0.16)`;
       ctx.lineWidth = 1;
       ctx.strokeRect(x + 1, y + 1, S - 2, S - 2);
       break;
@@ -319,10 +309,6 @@ function drawTile(
         ctx.stroke();
       }
 
-      // Edge shadow
-      ctx.strokeStyle = 'rgba(10,8,6,0.5)';
-      ctx.lineWidth = 0.5;
-      ctx.strokeRect(x + 0.5, y + 0.5, S - 1, S - 1);
       break;
     }
 

@@ -28,6 +28,7 @@ export class GameEngine {
   floaters: FloatingNumber[] = [];
   particles: Particle[] = [];
   projectiles: Projectile[] = [];
+  snow: { x: number; y: number; r: number; spd: number; sway: number; phase: number; alpha: number }[] = [];
   levelUpNotices: LevelUpNotice[] = [];
 
   input: Input;
@@ -580,6 +581,10 @@ export class GameEngine {
         this.drawDroppedItem(di);
       }
 
+      // Drifting ground mist for depth, then a warm hero light over the floor
+      this.drawGroundMist(vpW, vpH);
+      this.drawHeroLight(this.player.x - this.camX, this.player.y - this.camY);
+
       // Entities (sorted by Y for depth)
       const entities = [
         ...this.enemies.filter(e => !e.dead),
@@ -631,6 +636,9 @@ export class GameEngine {
 
       // Vignette — radial dark overlay at screen edges for atmosphere
       this.drawVignette(vpW, vpH);
+
+      // Falling snow on top of the world for a blizzard atmosphere
+      this.drawSnow(vpW, vpH);
 
       // Dungeon marker (if boss not yet spawned)
       if (!this.bossSpawned) {
@@ -710,21 +718,104 @@ export class GameEngine {
     ctx.restore();
   }
 
+  drawHeroLight(px: number, py: number): void {
+    const { ctx } = this;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const g = ctx.createRadialGradient(px, py - 6, 10, px, py, 170);
+    g.addColorStop(0, 'rgba(125,108,74,0.30)');
+    g.addColorStop(0.45, 'rgba(70,82,108,0.12)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(px, py, 170, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  drawGroundMist(vpW: number, vpH: number): void {
+    const { ctx } = this;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 3; i++) {
+      const span = vpW + 500;
+      const mx = ((this.tick * (0.25 + i * 0.05) + i * 640) % span) - 250;
+      const my = vpH * (0.32 + 0.2 * i) + Math.sin(this.tick * 0.01 + i * 2) * 22;
+      const g = ctx.createRadialGradient(mx, my, 10, mx, my, 230);
+      g.addColorStop(0, 'rgba(70,92,125,0.07)');
+      g.addColorStop(1, 'rgba(70,92,125,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.ellipse(mx, my, 230, 95, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  private ensureSnow(vpW: number, vpH: number): void {
+    if (this.snow.length > 0) return;
+    const layers = [
+      { count: 45, r: 2.2, spd: 1.5, sway: 0.7, alpha: 0.9 },
+      { count: 55, r: 1.4, spd: 1.0, sway: 0.5, alpha: 0.6 },
+      { count: 60, r: 0.9, spd: 0.6, sway: 0.35, alpha: 0.35 },
+    ];
+    for (const L of layers) {
+      for (let i = 0; i < L.count; i++) {
+        this.snow.push({
+          x: Math.random() * vpW,
+          y: Math.random() * vpH,
+          r: L.r * (0.7 + Math.random() * 0.6),
+          spd: L.spd * (0.8 + Math.random() * 0.5),
+          sway: L.sway,
+          phase: Math.random() * 1000,
+          alpha: L.alpha,
+        });
+      }
+    }
+  }
+
+  drawSnow(vpW: number, vpH: number): void {
+    const { ctx } = this;
+    this.ensureSnow(vpW, vpH);
+    ctx.save();
+    ctx.fillStyle = '#e2edf7';
+    for (const f of this.snow) {
+      f.y += f.spd;
+      f.x += Math.sin((this.tick + f.phase) * 0.02) * f.sway;
+      if (f.y > vpH + 6) { f.y = -6; f.x = Math.random() * vpW; }
+      if (f.x > vpW + 6) f.x = -6;
+      else if (f.x < -6) f.x = vpW + 6;
+      ctx.globalAlpha = f.alpha;
+      ctx.beginPath();
+      ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
   drawVignette(vpW: number, vpH: number): void {
     const { ctx } = this;
-    // Radial gradient from transparent centre to dark edges
-    const grad = ctx.createRadialGradient(vpW / 2, vpH / 2, vpH * 0.25, vpW / 2, vpH / 2, vpH * 0.85);
+    // Cinematic radial vignette — transparent centre to deep edges
+    const grad = ctx.createRadialGradient(vpW / 2, vpH * 0.46, vpH * 0.30, vpW / 2, vpH / 2, vpH * 0.95);
     grad.addColorStop(0, 'rgba(0,0,0,0)');
-    grad.addColorStop(0.7, 'rgba(0,0,0,0.18)');
-    grad.addColorStop(1, 'rgba(0,0,0,0.72)');
+    grad.addColorStop(0.6, 'rgba(4,7,14,0.22)');
+    grad.addColorStop(1, 'rgba(2,4,10,0.82)');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, vpW, vpH);
 
-    // Subtle animated cold-blue edge tint
+    // Cold moonlight grade — blue at top, deep shadow at the base
+    const topGrad = ctx.createLinearGradient(0, 0, 0, vpH);
+    topGrad.addColorStop(0, 'rgba(22,44,80,0.16)');
+    topGrad.addColorStop(0.5, 'rgba(10,20,45,0)');
+    topGrad.addColorStop(1, 'rgba(6,10,26,0.12)');
+    ctx.fillStyle = topGrad;
+    ctx.fillRect(0, 0, vpW, vpH);
+
+    // Subtle animated cold-blue edge shimmer
     const coldGrad = ctx.createRadialGradient(vpW / 2, vpH / 2, vpH * 0.4, vpW / 2, vpH / 2, vpH * 0.95);
-    const coldAlpha = Math.sin(this.tick * 0.008) * 0.025 + 0.04;
+    const coldAlpha = Math.sin(this.tick * 0.008) * 0.025 + 0.045;
     coldGrad.addColorStop(0, 'rgba(0,0,0,0)');
-    coldGrad.addColorStop(1, `rgba(30,60,100,${coldAlpha})`);
+    coldGrad.addColorStop(1, `rgba(40,80,130,${coldAlpha})`);
     ctx.fillStyle = coldGrad;
     ctx.fillRect(0, 0, vpW, vpH);
   }

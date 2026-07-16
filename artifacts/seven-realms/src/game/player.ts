@@ -288,6 +288,17 @@ export class Player extends Entity {
       }
       const pivotY = feetY - targetH * 0.55; // rotate around the torso
 
+      // Cool backlight so the hero separates from the dark ground
+      ctx.save();
+      const bl = ctx.createRadialGradient(0, -targetH * 0.4, 4, 0, -targetH * 0.4, targetH * 0.7);
+      bl.addColorStop(0, 'rgba(120,175,225,0.20)');
+      bl.addColorStop(1, 'rgba(120,175,225,0)');
+      ctx.fillStyle = bl;
+      ctx.beginPath();
+      ctx.ellipse(0, -targetH * 0.4, targetW * 0.55, targetH * 0.7, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
       ctx.save();
       // Flip horizontally when facing left (swing mirrors with the sprite)
       if (Math.cos(this.facing) < 0) ctx.scale(-1, 1);
