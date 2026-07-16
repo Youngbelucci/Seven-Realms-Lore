@@ -271,10 +271,31 @@ export class Player extends Entity {
       const targetW = targetH * (sprite.width / sprite.height);
       const bob = isMoving ? Math.sin(this.runPhase * 2) * 1.5 : 0;
       const feetY = S + 2;
+      // Sword swing animation: windup → strike → recover. The knight holds his
+      // blade at his side, so leaning the whole body arcs the sword forward.
+      let swing = 0;
+      let lunge = 0;
+      let dip = 0;
+      if (this.isAttacking && this.attackFrames > 0) {
+        const p = 1 - this.attackFrames / 10; // 0..1 progress through the swing
+        const windup = -0.45, strike = 0.9;
+        if (p < 0.25) swing = windup * (p / 0.25);                       // pull back
+        else if (p < 0.55) swing = windup + (strike - windup) * ((p - 0.25) / 0.30); // chop down
+        else swing = strike * (1 - (p - 0.55) / 0.45);                  // recover
+        const impact = Math.sin(Math.min(1, p / 0.55) * Math.PI);
+        lunge = impact * 7;   // step into the strike
+        dip = impact * 3;     // drop weight into the blow
+      }
+      const pivotY = feetY - targetH * 0.55; // rotate around the torso
+
       ctx.save();
-      // Flip horizontally when facing left
+      // Flip horizontally when facing left (swing mirrors with the sprite)
       if (Math.cos(this.facing) < 0) ctx.scale(-1, 1);
       ctx.imageSmoothingEnabled = false;
+      ctx.translate(lunge, dip);
+      ctx.translate(0, pivotY);
+      ctx.rotate(swing);
+      ctx.translate(0, -pivotY);
       ctx.drawImage(sprite, -targetW / 2, feetY - targetH + bob, targetW, targetH);
       ctx.restore();
 
@@ -311,23 +332,27 @@ export class Player extends Entity {
 
       ctx.restore(); // matches the translate() save
 
-      // — ATTACK SWING ARC (screen space) —
+      // — SLASH TRAIL (screen space) — a crescent that sweeps with the blade
       if (this.isAttacking && this.attackFrames > 0) {
-        const swingAlpha = this.attackFrames / 11;
+        const p = 1 - this.attackFrames / 10;
+        const sweep = -0.95 + 1.9 * p;              // blade travels across the arc
+        const lead = this.attackAngle + sweep;
+        const tail = lead - 0.75;
         ctx.save();
-        ctx.globalAlpha = swingAlpha;
+        ctx.globalAlpha = 1 - p * 0.4;
+        // Faint wide trail behind the edge
+        ctx.strokeStyle = 'rgba(190,225,255,0.30)';
+        ctx.lineWidth = 11;
+        ctx.beginPath();
+        ctx.arc(sx, sy, this.attackRange, tail, lead);
+        ctx.stroke();
+        // Bright leading edge of the slash
         ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 4;
-        ctx.shadowColor = '#88ccff';
-        ctx.shadowBlur = 8;
+        ctx.shadowColor = '#aaddff';
+        ctx.shadowBlur = 10;
         ctx.beginPath();
-        ctx.arc(sx, sy, this.attackRange, this.attackAngle - 0.65, this.attackAngle + 0.65);
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-        ctx.strokeStyle = 'rgba(200,230,255,0.4)';
-        ctx.lineWidth = 8;
-        ctx.beginPath();
-        ctx.arc(sx, sy, this.attackRange + 4, this.attackAngle - 0.5, this.attackAngle + 0.5);
+        ctx.arc(sx, sy, this.attackRange, lead - 0.28, lead);
         ctx.stroke();
         ctx.restore();
       }
