@@ -73,10 +73,16 @@ export class Player extends Entity {
     }
 
     let mvx = 0, mvy = 0;
-    if (input.keys.has('KeyW') || input.keys.has('ArrowUp')) mvy -= 1;
-    if (input.keys.has('KeyS') || input.keys.has('ArrowDown')) mvy += 1;
-    if (input.keys.has('KeyA') || input.keys.has('ArrowLeft')) mvx -= 1;
-    if (input.keys.has('KeyD') || input.keys.has('ArrowRight')) mvx += 1;
+    // Touch joystick takes priority when active; otherwise fall back to keyboard
+    if (input.moveVec && (input.moveVec.x !== 0 || input.moveVec.y !== 0)) {
+      mvx = input.moveVec.x;
+      mvy = input.moveVec.y;
+    } else {
+      if (input.keys.has('KeyW') || input.keys.has('ArrowUp')) mvy -= 1;
+      if (input.keys.has('KeyS') || input.keys.has('ArrowDown')) mvy += 1;
+      if (input.keys.has('KeyA') || input.keys.has('ArrowLeft')) mvx -= 1;
+      if (input.keys.has('KeyD') || input.keys.has('ArrowRight')) mvx += 1;
+    }
 
     const mv = normalize({ x: mvx, y: mvy });
     const spd = this.stats.speed;

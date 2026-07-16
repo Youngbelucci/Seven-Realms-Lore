@@ -4,7 +4,7 @@ import { Player } from './player';
 import { Enemy, EnemyType } from './enemy';
 import { Boss } from './boss';
 import { rollLoot } from './loot';
-import { renderHUD, renderInventory } from './hud';
+import { renderHUD, renderInventory, getSkillSlotRects } from './hud';
 import {
   FloatingNumber, Particle, DroppedItem, Projectile, LevelUpNotice, Input, GamePhase
 } from './types';
@@ -47,6 +47,11 @@ export class GameEngine {
   rafId: number = 0;
   lastTime: number = 0;
 
+  // Touch controls
+  touchEnabled: boolean = false;
+  joystick = { active: false, id: -1, baseX: 0, baseY: 0, knobX: 0, knobY: 0 };
+  attackTouchId: number = -1;
+
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d')!;
@@ -63,7 +68,14 @@ export class GameEngine {
       mouseWorld: { x: spawnX, y: spawnY },
       mouseDown: false,
       mouseJustDown: false,
+      moveVec: { x: 0, y: 0 },
+      isTouch: false,
     };
+
+    // Show touch controls on touch-capable devices
+    this.touchEnabled =
+      typeof window !== 'undefined' &&
+      ('ontouchstart' in window || (navigator.maxTouchPoints ?? 0) > 0);
 
     this.spawnInitialEnemies();
     this.attachListeners();
@@ -165,18 +177,138 @@ export class GameEngine {
       const rect = this.canvas.getBoundingClientRect();
       this.input.mouse.x = e.clientX - rect.left;
       this.input.mouse.y = e.clientY - rect.top;
+      // Real mouse movement switches back to pointer aiming (dynamic modality)
+      this.input.isTouch = false;
     });
 
     this.canvas.addEventListener('mousedown', e => {
       if (e.button === 0) {
         this.input.mouseDown = true;
         this.input.mouseJustDown = true;
+        this.input.isTouch = false;
       }
     });
 
     this.canvas.addEventListener('mouseup', e => {
       if (e.button === 0) this.input.mouseDown = false;
     });
+
+    // ---- Touch controls ----
+    const rectOf = () => this.canvas.getBoundingClientRect();
+
+    const onTouchStart = (e: TouchEvent) => {
+      e.preventDefault();
+      this.touchEnabled = true;
+      this.input.isTouch = true;
+      const rect = rectOf();
+      const vpW = this.canvas.width, vpH = this.canvas.height;
+
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches[i];
+        const x = t.clientX - rect.left;
+        const y = t.clientY - rect.top;
+
+        // On end screens, any tap restarts the run
+        if (this.phase === 'gameover' || this.phase === 'victory') {
+          this.restart();
+          return;
+        }
+
+        // 1) Skill buttons
+        const slotIdx = this.skillSlotAt(x, y, vpW, vpH);
+        if (slotIdx >= 0) {
+          const keyCode = ['KeyQ', 'KeyE', 'KeyR', 'KeyF'][slotIdx];
+          if (keyCode) this.input.justPressed.add(keyCode);
+          continue;
+        }
+
+        // 2) Attack button (bottom-right)
+        if (this.attackTouchId === -1 && this.inAttackButton(x, y, vpW, vpH)) {
+          this.attackTouchId = t.identifier;
+          this.input.mouseDown = true;
+          this.input.mouseJustDown = true;
+          continue;
+        }
+
+        // 3) Otherwise, left side of screen starts the movement joystick
+        if (!this.joystick.active && x < vpW * 0.55) {
+          this.joystick.active = true;
+          this.joystick.id = t.identifier;
+          this.joystick.baseX = x;
+          this.joystick.baseY = y;
+          this.joystick.knobX = x;
+          this.joystick.knobY = y;
+        }
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      e.preventDefault();
+      const rect = rectOf();
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches[i];
+        if (t.identifier !== this.joystick.id || !this.joystick.active) continue;
+        const x = t.clientX - rect.left;
+        const y = t.clientY - rect.top;
+        const dx = x - this.joystick.baseX;
+        const dy = y - this.joystick.baseY;
+        const len = Math.hypot(dx, dy);
+        const maxR = 55;
+        const clamped = Math.min(len, maxR);
+        const nx = len > 0 ? dx / len : 0;
+        const ny = len > 0 ? dy / len : 0;
+        this.joystick.knobX = this.joystick.baseX + nx * clamped;
+        this.joystick.knobY = this.joystick.baseY + ny * clamped;
+        // Deadzone
+        if (len > 10) {
+          this.input.moveVec = { x: nx, y: ny };
+        } else {
+          this.input.moveVec = { x: 0, y: 0 };
+        }
+      }
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      e.preventDefault();
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches[i];
+        if (t.identifier === this.joystick.id) {
+          this.joystick.active = false;
+          this.joystick.id = -1;
+          this.input.moveVec = { x: 0, y: 0 };
+        }
+        if (t.identifier === this.attackTouchId) {
+          this.attackTouchId = -1;
+          this.input.mouseDown = false;
+        }
+      }
+    };
+
+    this.canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+    this.canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+    this.canvas.addEventListener('touchend', onTouchEnd, { passive: false });
+    this.canvas.addEventListener('touchcancel', onTouchEnd, { passive: false });
+  }
+
+  // Returns skill slot index (0-3) at the given screen point, or -1
+  skillSlotAt(x: number, y: number, vpW: number, vpH: number): number {
+    const rects = getSkillSlotRects(vpW, vpH, this.player.skills.length);
+    for (let i = 0; i < rects.length; i++) {
+      const r = rects[i];
+      // Pad the hit area a little for finger-friendliness
+      if (x >= r.x - 6 && x <= r.x + r.w + 6 && y >= r.y - 6 && y <= r.y + r.h + 6) return i;
+    }
+    return -1;
+  }
+
+  attackButtonCenter(vpW: number, vpH: number): { x: number; y: number; r: number } {
+    // Sit above the centered skill bar so it never overlaps on narrow phones
+    return { x: vpW - 72, y: vpH - 172, r: 50 };
+  }
+
+  inAttackButton(x: number, y: number, vpW: number, vpH: number): boolean {
+    const c = this.attackButtonCenter(vpW, vpH);
+    return (x - c.x) ** 2 + (y - c.y) ** 2 <= c.r * c.r;
   }
 
   update(dt: number): void {
@@ -193,6 +325,30 @@ export class GameEngine {
       x: this.input.mouse.x + this.camX,
       y: this.input.mouse.y + this.camY,
     };
+
+    // Touch mode auto-aim: attacks/skills target the nearest living enemy
+    if (this.input.isTouch) {
+      const px = this.player.x, py = this.player.y;
+      let best: { x: number; y: number } | null = null;
+      let bestD = Infinity;
+      for (const e of this.enemies) {
+        if (e.dead) continue;
+        const d = (e.x - px) ** 2 + (e.y - py) ** 2;
+        if (d < bestD) { bestD = d; best = e; }
+      }
+      if (this.boss && !this.boss.dead) {
+        const d = (this.boss.x - px) ** 2 + (this.boss.y - py) ** 2;
+        if (d < bestD) { bestD = d; best = this.boss; }
+      }
+      if (best) {
+        this.input.mouseWorld = { x: best.x, y: best.y };
+      } else {
+        this.input.mouseWorld = {
+          x: px + Math.cos(this.player.facing) * 100,
+          y: py + Math.sin(this.player.facing) * 100,
+        };
+      }
+    }
 
     // Basic attack on mouse click or spacebar
     const attacking = this.input.mouseJustDown || this.input.mouseDown || this.input.keys.has('Space');
@@ -488,6 +644,11 @@ export class GameEngine {
         renderInventory(ctx, vpW, vpH, this.player, this.droppedItems);
       }
 
+      // Touch controls overlay (joystick + attack button)
+      if (this.touchEnabled && !this.inventoryOpen) {
+        this.drawTouchControls(vpW, vpH);
+      }
+
       if (this.phase === 'victory') {
         this.drawVictory(vpW, vpH);
       }
@@ -566,6 +727,55 @@ export class GameEngine {
     coldGrad.addColorStop(1, `rgba(30,60,100,${coldAlpha})`);
     ctx.fillStyle = coldGrad;
     ctx.fillRect(0, 0, vpW, vpH);
+  }
+
+  drawTouchControls(vpW: number, vpH: number): void {
+    const { ctx } = this;
+
+    // ---- Movement joystick (only while active) ----
+    if (this.joystick.active) {
+      const bx = this.joystick.baseX, by = this.joystick.baseY;
+      ctx.save();
+      // Base ring
+      ctx.beginPath();
+      ctx.arc(bx, by, 55, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(20,30,50,0.35)';
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(120,160,220,0.5)';
+      ctx.stroke();
+      // Knob
+      ctx.beginPath();
+      ctx.arc(this.joystick.knobX, this.joystick.knobY, 26, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(140,180,240,0.55)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(200,220,255,0.8)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // ---- Attack button (bottom-right) ----
+    const c = this.attackButtonCenter(vpW, vpH);
+    ctx.save();
+    const held = this.attackTouchId !== -1;
+    const grad = ctx.createRadialGradient(c.x, c.y - 10, 6, c.x, c.y, c.r);
+    grad.addColorStop(0, held ? '#ff8866' : '#cc3322');
+    grad.addColorStop(1, held ? '#992211' : '#661410');
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = held ? 'rgba(255,200,150,0.9)' : 'rgba(255,120,90,0.7)';
+    ctx.stroke();
+    // Sword glyph
+    ctx.fillStyle = '#ffe0c0';
+    ctx.font = '30px serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('⚔', c.x, c.y);
+    ctx.restore();
   }
 
   drawDungeonHint(): void {
@@ -715,6 +925,11 @@ export class GameEngine {
     this.grid = generateMap();
     this.spawnInitialEnemies();
     this.input.keys.clear();
+    this.input.moveVec = { x: 0, y: 0 };
+    this.input.mouseDown = false;
+    this.joystick.active = false;
+    this.joystick.id = -1;
+    this.attackTouchId = -1;
   }
 
   start(): void {

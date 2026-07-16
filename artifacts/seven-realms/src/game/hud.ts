@@ -246,18 +246,31 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.closePath();
 }
 
+export interface SlotRect { x: number; y: number; w: number; h: number; }
+
+// Shared layout so rendering and touch hit-testing stay in sync.
+export function getSkillSlotRects(vpW: number, vpH: number, count: number): SlotRect[] {
+  const slotSize = 56;
+  const gap = 8;
+  const totalW = count * slotSize + (count - 1) * gap;
+  const startX = vpW / 2 - totalW / 2;
+  const startY = vpH - 80;
+  const rects: SlotRect[] = [];
+  for (let i = 0; i < count; i++) {
+    rects.push({ x: startX + i * (slotSize + gap), y: startY, w: slotSize, h: slotSize });
+  }
+  return rects;
+}
+
 function renderSkillBar(ctx: CanvasRenderingContext2D, vpW: number, vpH: number, skills: SkillDef[]): void {
   const now = Date.now();
   const slotSize = 56;
-  const gap = 8;
-  const totalW = skills.length * slotSize + (skills.length - 1) * gap;
-  const startX = vpW / 2 - totalW / 2;
-  const startY = vpH - 80;
+  const rects = getSkillSlotRects(vpW, vpH, skills.length);
 
   for (let i = 0; i < skills.length; i++) {
     const sk = skills[i];
-    const x = startX + i * (slotSize + gap);
-    const y = startY;
+    const x = rects[i].x;
+    const y = rects[i].y;
     const frac = getSkillCooldownFraction(sk, now);
     const ready = frac >= 1;
 

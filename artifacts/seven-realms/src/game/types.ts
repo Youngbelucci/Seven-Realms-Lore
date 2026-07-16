@@ -122,4 +122,6 @@ export interface Input {
   mouseWorld: Vec2;
   mouseDown: boolean;
   mouseJustDown: boolean;
+  moveVec: Vec2;    // normalized movement from touch joystick; (0,0) when unused
+  isTouch: boolean; // true once touch input has been detected/used
 }

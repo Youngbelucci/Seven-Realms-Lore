@@ -55,6 +55,10 @@ export default function App() {
           display: 'block',
           width: '100%',
           height: '100%',
+          touchAction: 'none',
+          WebkitUserSelect: 'none',
+          userSelect: 'none',
+          WebkitTouchCallout: 'none',
         }}
         tabIndex={0}
       />
