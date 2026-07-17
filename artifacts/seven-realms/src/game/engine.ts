@@ -116,7 +116,7 @@ export class GameEngine {
 
     // Kick off sprite loading up front so art pops in before combat starts
     assets.preload([
-      'characters/knight',
+      'characters/knight', 'characters/knight-sheet',
       'enemies/wolf', 'enemies/warrior', 'enemies/archer',
       'bosses/guardian',
       'tiles/snow', 'tiles/ice', 'tiles/wall', 'tiles/ruin',
