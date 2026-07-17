@@ -11,9 +11,9 @@ import {
   renderDungeonHint, renderGameOver, renderVictory,
 } from './ui';
 import {
-  FloatingNumber, Particle, DroppedItem, Projectile, LevelUpNotice, Input, GamePhase, BloodDecal,
+  FloatingNumber, Particle, DroppedItem, HealthOrb, Projectile, LevelUpNotice, Input, GamePhase, BloodDecal,
 } from './types';
-import { dist, circlesOverlap } from './utils';
+import { dist, circlesOverlap, randRange } from './utils';
 import { MAP_W, MAP_H } from './constants';
 import { updateCamera, addCameraShake } from './camera';
 import { Lighting } from './lighting';
@@ -42,6 +42,7 @@ export class GameEngine {
   bossSpawned: boolean = false;
 
   droppedItems: DroppedItem[] = [];
+  healthOrbs: HealthOrb[] = [];
   floaters: FloatingNumber[] = [];
   particles: Particle[] = [];
   projectiles: Projectile[] = [];
@@ -463,6 +464,46 @@ export class GameEngine {
       }
     }
 
+    // Health orbs: drift toward the player when close, heal on touch
+    for (let i = this.healthOrbs.length - 1; i >= 0; i--) {
+      const orb = this.healthOrbs[i];
+      orb.glowPhase += 0.1;
+      orb.life--;
+      const d = dist({ x: orb.x, y: orb.y }, { x: this.player.x, y: this.player.y });
+      if (d < 90 && d > 1) {
+        // Magnet pull, stronger as it gets closer
+        const pull = 2.2 * (1 - d / 90) + 0.6;
+        orb.x += ((this.player.x - orb.x) / d) * pull;
+        orb.y += ((this.player.y - orb.y) / d) * pull;
+      }
+      if (d < 28) {
+        const missing = this.player.stats.maxHp - this.player.stats.hp;
+        const healed = Math.min(orb.heal, missing);
+        if (healed > 0) {
+          this.player.stats.hp += healed;
+          audio.play('pickup');
+          this.floaters.push({
+            x: this.player.x, y: this.player.y - 46,
+            value: healed, isCrit: false, damageType: 'physical',
+            alpha: 1, vy: -1, life: 90, maxLife: 90,
+            text: `💚 +${healed}`,
+          });
+          for (let p = 0; p < 8; p++) {
+            this.particles.push({
+              x: this.player.x + randRange(-10, 10), y: this.player.y + randRange(-16, 4),
+              vx: randRange(-0.8, 0.8), vy: randRange(-2.2, -0.8),
+              life: randRange(18, 32), maxLife: 32,
+              color: p % 2 === 0 ? '#44ee77' : '#aaffcc', size: randRange(3, 6),
+            });
+          }
+          this.healthOrbs.splice(i, 1);
+        }
+        // If at full HP, leave the orb on the ground for later
+      } else if (orb.life <= 0) {
+        this.healthOrbs.splice(i, 1);
+      }
+    }
+
     // FX stepping (arrays live here; logic lives in the particle system)
     this.floaters = updateFloaters(this.floaters);
     this.lighting.spawnEmbers(this.particles, this.camX, this.camY, this.canvas.width, this.canvas.height);
@@ -520,6 +561,31 @@ export class GameEngine {
       // Dropped items
       for (const di of this.droppedItems) {
         this.drawDroppedItem(di);
+      }
+
+      // Health orbs — soft green glowing pickups
+      for (const orb of this.healthOrbs) {
+        const ox = orb.x - this.camX;
+        const oy = orb.y - this.camY;
+        if (ox < -20 || oy < -20 || ox > vpW + 20 || oy > vpH + 20) continue;
+        const pulse = Math.sin(orb.glowPhase) * 0.25 + 0.75;
+        const fade = orb.life < 90 ? orb.life / 90 : 1; // blink out at end of life
+        const bobY = oy + Math.sin(orb.glowPhase * 0.7) * 2;
+        ctx.save();
+        ctx.globalAlpha = fade;
+        const glow = ctx.createRadialGradient(ox, bobY, 1, ox, bobY, 14 * pulse);
+        glow.addColorStop(0, 'rgba(120,255,170,0.85)');
+        glow.addColorStop(0.5, 'rgba(60,220,120,0.35)');
+        glow.addColorStop(1, 'rgba(30,160,80,0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(ox, bobY, 14 * pulse, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#bfffd8';
+        ctx.beginPath();
+        ctx.arc(ox, bobY, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
       }
 
       // Drifting ground mist for depth, then warm light pools over the floor
@@ -687,6 +753,7 @@ export class GameEngine {
     this.boss = null;
     this.bossSpawned = false;
     this.droppedItems = [];
+    this.healthOrbs = [];
     this.floaters = [];
     this.particles = [];
     this.projectiles = [];
