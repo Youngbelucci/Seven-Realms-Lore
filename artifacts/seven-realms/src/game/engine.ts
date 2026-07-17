@@ -2,6 +2,10 @@
 // and the main loop, and delegates the actual work to focused systems:
 //   camera / lighting / weather / particles / combat / game (rules) / ui.
 import { generateMap, renderMap } from './world';
+import {
+  generateDecorations, drawDecoration, drawDecorationShadow, decorationIsVisible,
+} from './decorations';
+import type { WorldDecoration } from './decorations';
 import type { TileGrid } from './world';
 import { Player } from './player';
 import { Enemy } from './enemy';
@@ -43,6 +47,7 @@ export class GameEngine {
 
   droppedItems: DroppedItem[] = [];
   healthOrbs: HealthOrb[] = [];
+  decorations: WorldDecoration[] = [];
   floaters: FloatingNumber[] = [];
   particles: Particle[] = [];
   projectiles: Projectile[] = [];
@@ -89,6 +94,7 @@ export class GameEngine {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d')!;
     this.grid = generateMap();
+    this.decorations = generateDecorations(this.grid);
 
     const spawnX = MAP_W / 2;
     const spawnY = MAP_H / 3;
@@ -464,6 +470,24 @@ export class GameEngine {
       }
     }
 
+    // Solid decorations (trees, rocks, crystals) push entities out
+    for (const dec of this.decorations) {
+      if (!dec.blocksMovement) continue;
+      const solidR = dec.width * 0.4;
+      const bodies = [this.player, ...this.enemies.filter(e => !e.dead)];
+      for (const body of bodies) {
+        const dx = body.x - dec.x;
+        const dy = body.y - dec.y;
+        const d2 = dx * dx + dy * dy;
+        const minD = solidR + 12;
+        if (d2 > 0.01 && d2 < minD * minD) {
+          const d = Math.sqrt(d2);
+          body.x = dec.x + (dx / d) * minD;
+          body.y = dec.y + (dy / d) * minD;
+        }
+      }
+    }
+
     // Health orbs: drift toward the player when close, heal on touch
     for (let i = this.healthOrbs.length - 1; i >= 0; i--) {
       const orb = this.healthOrbs[i];
@@ -558,6 +582,13 @@ export class GameEngine {
       // Blood pools sit on the ground, above the tiles but below everything else
       drawDecals(ctx, this.decals, this.camX, this.camY, vpW, vpH);
 
+      // Decoration ground shadows sit just above the decals
+      const visibleDecorations = this.decorations.filter(d =>
+        decorationIsVisible(d, this.camX, this.camY, vpW, vpH));
+      for (const dec of visibleDecorations) {
+        drawDecorationShadow(ctx, dec, this.camX, this.camY);
+      }
+
       // Dropped items
       for (const di of this.droppedItems) {
         this.drawDroppedItem(di);
@@ -596,18 +627,22 @@ export class GameEngine {
       // Torch props (posts + flames) anchor into the ground before entities
       this.lighting.drawTorchProps(ctx, this.camX, this.camY, vpW, vpH, this.tick);
 
-      // Entities (sorted by Y for depth)
-      const entities = [
-        ...this.enemies.filter(e => !e.dead),
-        ...(this.boss && !this.boss.dead ? [this.boss] : []),
-        this.player,
+      // Entities + decorations (sorted by Y for depth)
+      type Renderable = { y: number; kind: 'entity' | 'decoration'; ref: unknown };
+      const renderables: Renderable[] = [
+        ...this.enemies.filter(e => !e.dead).map(e => ({ y: e.y, kind: 'entity' as const, ref: e })),
+        ...(this.boss && !this.boss.dead ? [{ y: this.boss.y, kind: 'entity' as const, ref: this.boss }] : []),
+        { y: this.player.y, kind: 'entity' as const, ref: this.player },
+        ...visibleDecorations.map(d => ({ y: d.y, kind: 'decoration' as const, ref: d })),
       ].sort((a, b) => a.y - b.y);
 
-      for (const entity of entities) {
-        if (entity === this.boss && this.boss && !this.boss.dead) {
+      for (const r of renderables) {
+        if (r.kind === 'decoration') {
+          drawDecoration(ctx, r.ref as WorldDecoration, this.camX, this.camY, this.tick);
+        } else if (r.ref === this.boss && this.boss && !this.boss.dead) {
           this.boss.drawAtScreen(ctx, this.boss.x - this.camX, this.boss.y - this.camY);
         } else {
-          entity.draw(ctx, this.camX, this.camY);
+          (r.ref as Player).draw(ctx, this.camX, this.camY);
         }
       }
 
@@ -771,6 +806,7 @@ export class GameEngine {
     this.cameraShakeStrength = 0;
     this.lastWaveTime = Date.now();
     this.grid = generateMap();
+    this.decorations = generateDecorations(this.grid);
     spawnInitialEnemies(this);
     this.lighting.init(this.grid);
     this.weather.reset();
