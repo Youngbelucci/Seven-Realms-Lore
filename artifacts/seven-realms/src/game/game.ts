@@ -97,6 +97,17 @@ export function processDeadEnemies(g: GameEngine): void {
     if (loot) {
       g.droppedItems.push({ item: loot, x: e.x + randRange(-20, 20), y: e.y + randRange(-20, 20), glowPhase: 0 });
     }
+
+    // Health orbs: ~35% of kills drop a healing orb (stronger enemies heal more)
+    if (Math.random() < 0.35) {
+      g.healthOrbs.push({
+        x: e.x + randRange(-15, 15),
+        y: e.y + randRange(-15, 15),
+        heal: 15 + e.tier * 10,
+        glowPhase: Math.random() * Math.PI * 2,
+        life: 60 * 12, // lingers ~12 seconds
+      });
+    }
     const leveled = g.player.gainXP(e.xpValue);
     if (leveled) {
       g.levelUpNotices.push({ level: g.player.level, alpha: 1, life: 180, maxLife: 180 });

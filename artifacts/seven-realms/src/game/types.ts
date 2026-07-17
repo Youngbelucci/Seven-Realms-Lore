@@ -40,6 +40,14 @@ export interface Item {
   damageType?: DamageType;
 }
 
+export interface HealthOrb {
+  x: number;
+  y: number;
+  heal: number;
+  glowPhase: number;
+  life: number; // frames until it fades away
+}
+
 export interface DroppedItem {
   item: Item;
   x: number;
