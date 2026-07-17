@@ -8,9 +8,9 @@ export function getKnightSprite(): HTMLImageElement | null {
 }
 
 // --- Knight sprite sheet -----------------------------------------------
-// public/assets/characters/knight-sheet.png — 64x64 frames:
+// public/assets/characters/knight-sheet.png — 128x128 frames:
 //   row 0: 4 idle frames, row 1: 6 walk frames, row 2: 6 attack frames
-export const SHEET_FRAME = 64;
+export const SHEET_FRAME = 128;
 
 export const KNIGHT_ANIM = {
   idle: { row: 0, frames: 4, ticksPerFrame: 14 },
