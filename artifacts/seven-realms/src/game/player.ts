@@ -5,7 +5,7 @@ import { createSkills, isSkillReady, getSkillCooldownFraction } from './skills';
 import { clamp, angleBetween, circlesOverlap, normalize, vecFromAngle, randRange } from './utils';
 import { isSolid } from './world';
 import type { TileGrid } from './world';
-import { getKnightSprite } from './sprites';
+import { getKnightSprite, getKnightSheet, KNIGHT_ANIM, SHEET_FRAME } from './sprites';
 
 export class Player extends Entity {
   skills: SkillDef[] = createSkills();
@@ -20,7 +20,10 @@ export class Player extends Entity {
   attackRange: number = 55;
   attackAngle: number = 0;
   attackFrames: number = 0;
+  attackDuration: number = 10;
   isAttacking: boolean = false;
+  isMoving: boolean = false;
+  animClock: number = 0;
 
   chargeActive: boolean = false;
   chargeVx: number = 0;
@@ -70,8 +73,11 @@ export class Player extends Entity {
       }
       if (this.chargeFrames <= 0) this.chargeActive = false;
       this.runPhase += 0.4;
+      this.isMoving = true;
+      this.animClock++;
       return;
     }
+    this.animClock++;
 
     let mvx = 0, mvy = 0;
     // Touch joystick takes priority when active; otherwise fall back to keyboard
@@ -86,13 +92,18 @@ export class Player extends Entity {
     }
 
     const mv = normalize({ x: mvx, y: mvy });
+    const prevX = this.x, prevY = this.y;
     const spd = this.stats.speed;
     const nx = this.x + mv.x * spd * dt;
     const ny = this.y + mv.y * spd * dt;
     if (!isSolid(grid, nx, this.y) && nx > PLAYER_SIZE && nx < MAP_W - PLAYER_SIZE) this.x = nx;
     if (!isSolid(grid, this.x, ny) && ny > PLAYER_SIZE && ny < MAP_H - PLAYER_SIZE) this.y = ny;
 
-    if (mvx !== 0 || mvy !== 0) { this.facing = Math.atan2(mv.y, mv.x); this.runPhase += 0.25; }
+    // Movement state: walking only while the player actually displaced this
+    // frame (pressing into a wall keeps the idle animation).
+    this.isMoving = Math.abs(this.x - prevX) + Math.abs(this.y - prevY) > 0.01;
+    if (mvx !== 0 || mvy !== 0) this.facing = Math.atan2(mv.y, mv.x);
+    if (this.isMoving) this.runPhase += 0.25;
 
     this.attackAngle = angleBetween({ x: this.x, y: this.y }, input.mouseWorld);
     if (this.attackCooldown > 0) this.attackCooldown -= dt * 1000;
@@ -156,7 +167,7 @@ export class Player extends Entity {
         break;
       }
       case 'heavyStrike': {
-        this.attackFrames = 18; this.isAttacking = true;
+        this.attackFrames = 18; this.attackDuration = 18; this.isAttacking = true;
         for (let i = 0; i < 16; i++) {
           const a = this.attackAngle + randRange(-0.6, 0.6);
           particles.push({
@@ -189,6 +200,7 @@ export class Player extends Entity {
     if (this.attackCooldown > 0 || this.dead) return;
     this.attackCooldown = 480;
     this.attackFrames = 10;
+    this.attackDuration = 10;
     this.isAttacking = true;
     const isCrit = Math.random() < this.totalCrit;
     targetCallback(this.x, this.y, this.attackRange, this.attackAngle, this.totalDamage, isCrit);
@@ -226,7 +238,7 @@ export class Player extends Entity {
     const sx = this.x - camX;
     const sy = this.y - camY;
     const flash = this.hitFlash > 0;
-    const isMoving = this.runPhase > 0;
+    const isMoving = this.isMoving || this.chargeActive;
     const squash = isMoving ? (1 + Math.sin(this.runPhase * 2) * 0.06) : 1;
     const S = this.size;
 
@@ -264,6 +276,115 @@ export class Player extends Entity {
 
     ctx.scale(squash, 1 / squash);
 
+    const sheet = getKnightSheet();
+    if (sheet) {
+      // — SPRITE SHEET ANIMATION — attack overrides walk, walk overrides idle
+      const targetH = 68;
+      const feetY = S + 2;
+      const attacking = this.isAttacking && this.attackFrames > 0;
+
+      let row: number;
+      let frame: number;
+      if (attacking) {
+        const p = 1 - this.attackFrames / this.attackDuration; // 0..1 swing progress
+        row = KNIGHT_ANIM.attack.row;
+        frame = Math.min(KNIGHT_ANIM.attack.frames - 1, Math.floor(p * KNIGHT_ANIM.attack.frames));
+      } else if (isMoving) {
+        row = KNIGHT_ANIM.walk.row;
+        frame = Math.floor(this.animClock / KNIGHT_ANIM.walk.ticksPerFrame) % KNIGHT_ANIM.walk.frames;
+      } else {
+        row = KNIGHT_ANIM.idle.row;
+        frame = Math.floor(this.animClock / KNIGHT_ANIM.idle.ticksPerFrame) % KNIGHT_ANIM.idle.frames;
+      }
+
+      // Step into the strike, synced to the same swing progress as the trail
+      let lunge = 0;
+      if (attacking) {
+        const p = 1 - this.attackFrames / this.attackDuration;
+        lunge = Math.sin(Math.min(1, p / 0.55) * Math.PI) * 7;
+      }
+
+      // Cool backlight so the hero separates from the dark ground
+      ctx.save();
+      const bl = ctx.createRadialGradient(0, -targetH * 0.4, 4, 0, -targetH * 0.4, targetH * 0.7);
+      bl.addColorStop(0, 'rgba(120,175,225,0.20)');
+      bl.addColorStop(1, 'rgba(120,175,225,0)');
+      ctx.fillStyle = bl;
+      ctx.beginPath();
+      ctx.ellipse(0, -targetH * 0.4, targetH * 0.42, targetH * 0.7, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      ctx.save();
+      // Mirror the sprite when facing left
+      if (Math.cos(this.facing) < 0) ctx.scale(-1, 1);
+      ctx.imageSmoothingEnabled = false;
+      ctx.translate(lunge, 0);
+      ctx.drawImage(
+        sheet,
+        frame * SHEET_FRAME, row * SHEET_FRAME, SHEET_FRAME, SHEET_FRAME,
+        -targetH / 2, feetY - targetH, targetH, targetH
+      );
+      ctx.restore();
+
+      // Hit flash — red glow over the silhouette
+      if (flash) {
+        ctx.save();
+        const fg = ctx.createRadialGradient(0, -targetH * 0.35, 4, 0, -targetH * 0.35, targetH * 0.6);
+        fg.addColorStop(0, 'rgba(255,70,70,0.6)');
+        fg.addColorStop(1, 'rgba(255,0,0,0)');
+        ctx.fillStyle = fg;
+        ctx.beginPath();
+        ctx.ellipse(0, -targetH * 0.35, targetH * 0.5, targetH * 0.6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // Spin attack ring (kept in sheet mode)
+      if (this.spinFrames > 0) {
+        const spinAlpha = this.spinFrames / 25;
+        ctx.strokeStyle = `rgba(255,140,0,${spinAlpha * 0.9})`;
+        ctx.lineWidth = 6;
+        ctx.shadowColor = '#ff8800';
+        ctx.shadowBlur = 12;
+        ctx.beginPath();
+        ctx.arc(0, 0, S + 18, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = `rgba(255,220,80,${spinAlpha * 0.6})`;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(0, 0, S + 26, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      ctx.restore(); // matches the translate() save
+
+      // — SLASH TRAIL (screen space) — synced to the attack animation frames
+      if (attacking) {
+        const p = 1 - this.attackFrames / this.attackDuration;
+        const sweep = -0.95 + 1.9 * p;
+        const lead = this.attackAngle + sweep;
+        const tail = lead - 0.75;
+        ctx.save();
+        ctx.globalAlpha = 1 - p * 0.4;
+        ctx.strokeStyle = 'rgba(190,225,255,0.30)';
+        ctx.lineWidth = 11;
+        ctx.beginPath();
+        ctx.arc(sx, sy, this.attackRange, tail, lead);
+        ctx.stroke();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 4;
+        ctx.shadowColor = '#aaddff';
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.arc(sx, sy, this.attackRange, lead - 0.28, lead);
+        ctx.stroke();
+        ctx.restore();
+      }
+      return;
+    }
+
     const sprite = getKnightSprite();
     if (sprite) {
       // — IMAGE SPRITE (main character) —
@@ -277,7 +398,7 @@ export class Player extends Entity {
       let lunge = 0;
       let dip = 0;
       if (this.isAttacking && this.attackFrames > 0) {
-        const p = 1 - this.attackFrames / 10; // 0..1 progress through the swing
+        const p = 1 - this.attackFrames / this.attackDuration; // 0..1 progress through the swing
         const windup = -0.45, strike = 0.9;
         if (p < 0.25) swing = windup * (p / 0.25);                       // pull back
         else if (p < 0.55) swing = windup + (strike - windup) * ((p - 0.25) / 0.30); // chop down
@@ -345,7 +466,7 @@ export class Player extends Entity {
 
       // — SLASH TRAIL (screen space) — a crescent that sweeps with the blade
       if (this.isAttacking && this.attackFrames > 0) {
-        const p = 1 - this.attackFrames / 10;
+        const p = 1 - this.attackFrames / this.attackDuration;
         const sweep = -0.95 + 1.9 * p;              // blade travels across the arc
         const lead = this.attackAngle + sweep;
         const tail = lead - 0.75;
