@@ -1,4 +1,5 @@
 import { TILE, TILE_SIZE, MAP_COLS, MAP_ROWS } from './constants';
+import { assets } from './assets';
 
 export type TileGrid = number[][];
 
@@ -100,6 +101,21 @@ function tileSeed(c: number, r: number): number {
   return Math.abs((c * 374761393 + r * 1073741789) | 0);
 }
 
+// Draw one quadrant of a 1024px texture into a tile. The seed picks which
+// quadrant, so neighboring tiles vary instead of repeating identically.
+function drawTexQuadrant(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  x: number,
+  y: number,
+  seed: number
+): void {
+  const half = Math.floor(img.width / 2);
+  const qx = (seed % 2) * half;
+  const qy = ((seed >> 2) % 2) * Math.floor(img.height / 2);
+  ctx.drawImage(img, qx, qy, half, half, x, y, TILE_SIZE, TILE_SIZE);
+}
+
 function drawTile(
   ctx: CanvasRenderingContext2D,
   tile: number,
@@ -114,6 +130,11 @@ function drawTile(
 
   switch (tile) {
     case TILE.SNOW: {
+      const img = assets.getImage('tiles/snow');
+      if (img) {
+        drawTexQuadrant(ctx, img, x, y, seed);
+        break;
+      }
       // Base — dark slate-blue snow, not blinding white
       ctx.fillStyle = '#2a3545';
       ctx.fillRect(x, y, S, S);
@@ -141,6 +162,14 @@ function drawTile(
     }
 
     case TILE.SNOW2: {
+      const img = assets.getImage('tiles/snow');
+      if (img) {
+        drawTexQuadrant(ctx, img, x, y, seed >> 1);
+        // Slightly lighter than plain snow, as before
+        ctx.fillStyle = 'rgba(120,150,190,0.08)';
+        ctx.fillRect(x, y, S, S);
+        break;
+      }
       // Slightly lighter variation with cracked ice surface
       ctx.fillStyle = '#324055';
       ctx.fillRect(x, y, S, S);
@@ -163,6 +192,14 @@ function drawTile(
     }
 
     case TILE.SNOW3: {
+      const img = assets.getImage('tiles/snow');
+      if (img) {
+        drawTexQuadrant(ctx, img, x, y, seed >> 3);
+        // Darker, windswept variant
+        ctx.fillStyle = 'rgba(6,10,18,0.22)';
+        ctx.fillRect(x, y, S, S);
+        break;
+      }
       // Darker, windswept snow
       ctx.fillStyle = '#1e2a38';
       ctx.fillRect(x, y, S, S);
@@ -184,6 +221,15 @@ function drawTile(
     }
 
     case TILE.ICE: {
+      const img = assets.getImage('tiles/ice');
+      if (img) {
+        drawTexQuadrant(ctx, img, x, y, seed);
+        // Keep the animated shimmer on top of the texture
+        const shimmerA = Math.sin(tick * 0.025 + seed * 0.7) * 0.1 + 0.08;
+        ctx.fillStyle = `rgba(80,180,220,${shimmerA})`;
+        ctx.fillRect(x + 4, y + 4, S - 8, S - 8);
+        break;
+      }
       // Deep teal ice
       ctx.fillStyle = '#1a3a4a';
       ctx.fillRect(x, y, S, S);
@@ -210,6 +256,22 @@ function drawTile(
     }
 
     case TILE.FOREST: {
+      const canopy = assets.getImage('tiles/forest');
+      if (canopy) {
+        // Dark ground under the tree (snow texture darkened if loaded)
+        const ground = assets.getImage('tiles/snow');
+        if (ground) drawTexQuadrant(ctx, ground, x, y, seed);
+        else {
+          ctx.fillStyle = '#0e160e';
+          ctx.fillRect(x, y, S, S);
+        }
+        ctx.fillStyle = 'rgba(4,10,6,0.55)';
+        ctx.fillRect(x, y, S, S);
+        // Canopy sprite, slightly overhanging the tile
+        const d = S * 1.3;
+        ctx.drawImage(canopy, x + S / 2 - d / 2, y + S / 2 - d / 2, d, d);
+        break;
+      }
       // Deep shadow ground
       ctx.fillStyle = '#0e160e';
       ctx.fillRect(x, y, S, S);
@@ -244,6 +306,15 @@ function drawTile(
     }
 
     case TILE.WALL: {
+      const img = assets.getImage('tiles/wall');
+      if (img) {
+        drawTexQuadrant(ctx, img, x, y, seed);
+        // Keep a dark edge so walls read as solid blocks
+        ctx.strokeStyle = 'rgba(8,6,6,0.7)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x + 1, y + 1, S - 2, S - 2);
+        break;
+      }
       // Dark stone blocks
       ctx.fillStyle = '#1c1818';
       ctx.fillRect(x, y, S, S);
@@ -275,6 +346,11 @@ function drawTile(
     }
 
     case TILE.RUIN: {
+      const img = assets.getImage('tiles/ruin');
+      if (img) {
+        drawTexQuadrant(ctx, img, x, y, seed);
+        break;
+      }
       // Ruined stone floor
       ctx.fillStyle = '#1e1a18';
       ctx.fillRect(x, y, S, S);
@@ -313,6 +389,18 @@ function drawTile(
     }
 
     case TILE.DUNGEON_FLOOR: {
+      const img = assets.getImage('tiles/dungeon_floor');
+      if (img) {
+        drawTexQuadrant(ctx, img, x, y, seed);
+        // Keep the pulsing rune glow on top of the texture
+        const glow = Math.sin(tick * 0.04 + seed * 0.5) * 0.15 + 0.16;
+        const gg = ctx.createRadialGradient(x + S / 2, y + S / 2, 0, x + S / 2, y + S / 2, S / 2);
+        gg.addColorStop(0, `rgba(120,40,200,${glow})`);
+        gg.addColorStop(1, 'rgba(80,20,140,0)');
+        ctx.fillStyle = gg;
+        ctx.fillRect(x, y, S, S);
+        break;
+      }
       ctx.fillStyle = '#120d18';
       ctx.fillRect(x, y, S, S);
 

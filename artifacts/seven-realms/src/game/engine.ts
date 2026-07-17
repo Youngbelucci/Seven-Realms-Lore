@@ -119,6 +119,8 @@ export class GameEngine {
       'characters/knight',
       'enemies/wolf', 'enemies/warrior', 'enemies/archer',
       'bosses/guardian',
+      'tiles/snow', 'tiles/ice', 'tiles/wall', 'tiles/ruin',
+      'tiles/dungeon_floor', 'tiles/forest',
     ]);
 
     spawnInitialEnemies(this);
