@@ -70,6 +70,7 @@ export function checkBossSpawn(g: GameEngine): void {
     g.boss = new Boss(DUNGEON_X, DUNGEON_Y);
     g.boss.spawnRequestCallback = (type, x, y) => spawnEnemy(g, type, x, y);
     audio.play('bossRoar');
+    audio.startBossMusic();
     g.floaters.push({
       x: g.canvas.width / 2,
       y: g.canvas.height / 3,
