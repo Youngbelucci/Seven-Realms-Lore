@@ -24,9 +24,9 @@ export class Boss extends Entity {
       maxHp: BOSS_HP,
       energy: 0,
       maxEnergy: 0,
-      damage: 30,
+      damage: 20,
       defense: 15,
-      speed: 65,
+      speed: 58,
       critChance: 0.07,
       critMultiplier: 2.0,
     });
@@ -64,7 +64,7 @@ export class Boss extends Entity {
     }
     this.bossAttacks = this.bossAttacks.filter(a => a.life > 0);
 
-    const attackInterval = this.phase === 3 ? 1800 : this.phase === 2 ? 2400 : 3000;
+    const attackInterval = this.phase === 3 ? 2200 : this.phase === 2 ? 2800 : 3400;
 
     if (this.attackTimer <= 0) {
       this.attackTimer = attackInterval;
@@ -76,7 +76,7 @@ export class Boss extends Entity {
       const isCrit = Math.random() < this.stats.critChance;
       if (!player.shieldActive || Math.random() > 0.3) {
         player.takeDamage(this.stats.damage, 'ice', isCrit, floaters, particles);
-        player.invincibleFrames = 40;
+        player.invincibleFrames = 60;
       }
     }
 
@@ -131,7 +131,7 @@ export class Boss extends Entity {
       alpha: 1,
       life: 45,
       maxLife: 45,
-      damage: this.stats.damage * 1.5,
+      damage: this.stats.damage * 1.25,
     });
 
     // Warning particles
@@ -170,7 +170,7 @@ export class Boss extends Entity {
         y: this.y,
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
-        damage: 18,
+        damage: 12,
         damageType: 'ice',
         fromEnemy: true,
         life: 2.5,
