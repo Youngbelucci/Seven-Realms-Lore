@@ -555,6 +555,9 @@ export class GameEngine {
     this.runStats = { kills: this.player.kills, level: this.player.level, time: this.player.getElapsedSeconds() };
     this.bestRecord = recordResult(this.runStats.level, this.runStats.kills, this.runStats.time);
     clearRun();
+    // Boss theme ends with the boss; drift back to the calm ambient pad.
+    audio.stopMusic();
+    audio.startMusic();
   }
 
   private onGameOver(): void {

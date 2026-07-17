@@ -39,6 +39,10 @@ class AudioManager {
   private musicNodes: AudioNode[] = [];
   private musicGain: GainNode | null = null;
   private musicPlaying = false;
+  private musicMode: 'ambient' | 'boss' | null = null;
+  // Boss theme rhythm scheduler (setInterval id).
+  private bossPulseTimer: number | null = null;
+  private bossStep = 0;
 
   // ---------------------------------------------------------------------------
   // Context lifecycle
@@ -372,18 +376,127 @@ class AudioManager {
         return osc;
       });
 
+      // Cold wind: filtered noise, with a slow LFO swelling the gusts.
+      const windNodes: AudioNode[] = [];
+      if (this.noiseBuffer) {
+        const wind = ctx.createBufferSource();
+        wind.buffer = this.noiseBuffer;
+        wind.loop = true;
+
+        const windFilter = ctx.createBiquadFilter();
+        windFilter.type = 'bandpass';
+        windFilter.frequency.value = 480;
+        windFilter.Q.value = 0.6;
+
+        const windGain = ctx.createGain();
+        windGain.gain.value = 0.16;
+
+        // Gust LFO: slowly swells the wind volume and sweeps its pitch.
+        const gustLfo = ctx.createOscillator();
+        gustLfo.type = 'sine';
+        gustLfo.frequency.value = 0.09;
+        const gustGain = ctx.createGain();
+        gustGain.gain.value = 0.10;
+        gustLfo.connect(gustGain);
+        gustGain.connect(windGain.gain);
+
+        const gustPitch = ctx.createGain();
+        gustPitch.gain.value = 180;
+        gustLfo.connect(gustPitch);
+        gustPitch.connect(windFilter.frequency);
+
+        wind.connect(windFilter);
+        windFilter.connect(windGain);
+        windGain.connect(musicGain);
+        wind.start(now);
+        gustLfo.start(now);
+        windNodes.push(wind, windFilter, windGain, gustLfo, gustGain, gustPitch);
+      }
+
       // Track everything for teardown.
-      this.musicNodes = [filter, lfo, lfoGain, ...oscillators];
+      this.musicNodes = [filter, lfo, lfoGain, ...oscillators, ...windNodes];
       this.musicPlaying = true;
+      this.musicMode = 'ambient';
     } catch {
       // Never throw — just leave music off.
       this.musicPlaying = false;
     }
   }
 
+  /**
+   * Tense boss battle theme: darker drone, driving bass ostinato and a
+   * heartbeat-like percussion pulse. Replaces whatever music is playing.
+   */
+  startBossMusic(): void {
+    try {
+      if (this.musicMode === 'boss') return;
+      if (this.musicPlaying) this.stopMusic();
+      if (!this.ctx || !this.master) return;
+      const ctx = this.ctx;
+      const now = ctx.currentTime;
+
+      const musicGain = ctx.createGain();
+      musicGain.gain.setValueAtTime(0.0001, now);
+      musicGain.gain.exponentialRampToValueAtTime(0.11, now + 1.2); // faster fade-in
+      musicGain.connect(this.master);
+      this.musicGain = musicGain;
+
+      // Darker, more open filter than the ambient pad.
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 900;
+      filter.Q.value = 2;
+      filter.connect(musicGain);
+
+      // Dissonant drone: D minor-ish with a tritone rub for menace.
+      const droneFreqs = [36.71, 73.42, 87.31, 51.91]; // D1, D2, F2, Ab1 (tritone)
+      const oscillators = droneFreqs.map((freq, i) => {
+        const osc = ctx.createOscillator();
+        osc.type = i % 2 === 0 ? 'sawtooth' : 'square';
+        osc.frequency.value = freq;
+        const g = ctx.createGain();
+        g.gain.value = i === 3 ? 0.35 : 0.8; // tritone quieter, just a shadow
+        osc.connect(g);
+        g.connect(filter);
+        osc.start(now);
+        return osc;
+      });
+
+      this.musicNodes = [filter, ...oscillators];
+      this.musicPlaying = true;
+      this.musicMode = 'boss';
+
+      // Rhythm: bass ostinato stabs + heartbeat thump, scheduled on a timer.
+      // D–D–F–D  D–C–Ab–A pattern, one step per 240ms (~125bpm eighths).
+      const pattern = [73.42, 73.42, 87.31, 73.42, 73.42, 65.41, 51.91, 55.0];
+      this.bossStep = 0;
+      this.bossPulseTimer = window.setInterval(() => {
+        if (!this.canPlay() || this.musicMode !== 'boss' || !this.ctx || !this.musicGain) return;
+        const t = this.ctx.currentTime;
+        const step = this.bossStep++ % pattern.length;
+
+        // Bass stab
+        this.tone('sawtooth', pattern[step], t, 0.18, 0.20, this.musicGain);
+
+        // Heartbeat thump on beats 1 and 5 (low sine knock)
+        if (step % 4 === 0 && this.noiseBuffer) {
+          this.tone('sine', 55, t, 0.14, 0.5, this.musicGain, 38);
+        }
+      }, 240);
+    } catch {
+      this.musicPlaying = false;
+      this.musicMode = null;
+    }
+  }
+
   /** Stop the ambient music and disconnect all its nodes. */
   stopMusic(): void {
     try {
+      if (this.bossPulseTimer !== null) {
+        window.clearInterval(this.bossPulseTimer);
+        this.bossPulseTimer = null;
+      }
+      this.musicMode = null;
       if (!this.musicPlaying) return;
       const ctx = this.ctx;
       const now = ctx ? ctx.currentTime : 0;
