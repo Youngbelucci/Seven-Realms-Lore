@@ -9,6 +9,7 @@ const BEST_KEY = 'seven-realms:best:v1';
 const RUN_VERSION = 1;
 
 export interface RunSnapshot {
+  realm: number;
   level: number;
   xp: number;
   xpToNext: number;
@@ -75,6 +76,7 @@ function isValidSnapshot(v: unknown): v is RunSnapshot {
   if (typeof v !== 'object' || v === null) return false;
   const o = v as Record<string, unknown>;
   return (
+    (o.realm === undefined || isNum(o.realm)) && // realm added later; old saves lack it
     isNum(o.level) &&
     isNum(o.xp) &&
     isNum(o.xpToNext) &&
@@ -107,6 +109,8 @@ export function loadRun(): RunSnapshot | null {
     const store = parsed as Record<string, unknown>;
     if (store.version !== RUN_VERSION) return null;
     if (!isValidSnapshot(store.snapshot)) return null;
+    // Older saves (pre-realms) default to Realm 1.
+    if (!isNum(store.snapshot.realm)) (store.snapshot as RunSnapshot).realm = 1;
     return store.snapshot;
   } catch {
     return null;

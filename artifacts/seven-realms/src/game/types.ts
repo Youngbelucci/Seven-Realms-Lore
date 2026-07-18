@@ -2,7 +2,7 @@ export type DamageType = 'physical' | 'fire' | 'ice' | 'poison' | 'darkness';
 export type ItemRarity = 'common' | 'magic' | 'rare' | 'legendary';
 export type EnemyState = 'idle' | 'aggro' | 'attack' | 'dead';
 export type SkillId = 'heavyStrike' | 'spinAttack' | 'warriorCharge' | 'ancestralShield';
-export type GamePhase = 'playing' | 'gameover' | 'paused' | 'victory';
+export type GamePhase = 'playing' | 'gameover' | 'paused' | 'victory' | 'realmclear';
 
 export interface Vec2 {
   x: number;

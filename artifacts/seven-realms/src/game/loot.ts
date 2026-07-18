@@ -21,7 +21,7 @@ function rollRarity(enemyTier: number): ItemRarity {
 
 export function rollLoot(enemyTier: number): Item | null {
   // ~55% drop chance, higher for boss tier
-  const dropChance = 0.55 + enemyTier * 0.1;
+  const dropChance = Math.min(0.75, 0.55 + enemyTier * 0.1);
   if (Math.random() > dropChance) return null;
 
   const rarity = rollRarity(enemyTier);
@@ -34,4 +34,13 @@ export function rollLoot(enemyTier: number): Item | null {
 
   const template = eligible[randInt(0, eligible.length - 1)];
   return buildItem(template, rarity);
+}
+
+// Guaranteed legendary drop — the boss always rewards a legendary item.
+export function rollBossLoot(): Item | null {
+  const pool = Math.random() < 0.5 ? WEAPON_TEMPLATES : ARMOR_TEMPLATES;
+  const eligible = pool.filter(t => rarityIndex(t.minRarity) <= rarityIndex('legendary'));
+  if (eligible.length === 0) return null;
+  const template = eligible[randInt(0, eligible.length - 1)];
+  return buildItem(template, 'legendary');
 }

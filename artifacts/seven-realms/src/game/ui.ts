@@ -465,6 +465,42 @@ export function renderGameOver(
   return a;
 }
 
+// Interstitial shown after clearing a realm (except the last one).
+export function renderRealmClear(
+  ctx: CanvasRenderingContext2D,
+  vpW: number, vpH: number,
+  alpha: number,
+  realm: number,
+): number {
+  const a = Math.min(1, alpha + 0.02);
+  ctx.save();
+  ctx.fillStyle = `rgba(4,10,24,${a * 0.78})`;
+  ctx.fillRect(0, 0, vpW, vpH);
+
+  ctx.globalAlpha = a;
+  ctx.fillStyle = '#66ddff';
+  ctx.font = 'bold 46px "Georgia", serif';
+  ctx.textAlign = 'center';
+  ctx.shadowColor = '#2266aa';
+  ctx.shadowBlur = 22;
+  ctx.fillText(`REINO ${realm} CONQUISTADO`, vpW / 2, vpH / 2 - 46);
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = '#cfe3ff';
+  ctx.font = '18px "Georgia", serif';
+  ctx.fillText('El Guardián ha caído... pero quedan más reinos', vpW / 2, vpH / 2 - 6);
+
+  ctx.fillStyle = '#ff9966';
+  ctx.font = '15px "Georgia", serif';
+  ctx.fillText('Conservas tu nivel y equipo — los enemigos serán más fuertes', vpW / 2, vpH / 2 + 24);
+
+  ctx.fillStyle = '#ffcc44';
+  ctx.font = 'bold 16px sans-serif';
+  ctx.fillText(`Pulsa [ESPACIO] para entrar al Reino ${realm + 1} de 7`, vpW / 2, vpH / 2 + 62);
+  ctx.restore();
+  return a;
+}
+
 export function renderVictory(
   ctx: CanvasRenderingContext2D,
   vpW: number, vpH: number,
