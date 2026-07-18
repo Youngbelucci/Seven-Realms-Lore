@@ -20,6 +20,7 @@ export const BOSS_HP = 1800;
 export const BOSS_PHASE2_HP = 1200;
 export const BOSS_PHASE3_HP = 600;
 export const BOSS_SIZE = 36;
+export const MAX_REALM = 7;
 
 // Tile types
 export const TILE = {

@@ -12,13 +12,13 @@ import { Enemy } from './enemy';
 import { Boss } from './boss';
 import {
   renderHUD, renderInventory, getSkillSlotRects,
-  renderDungeonHint, renderGameOver, renderVictory,
+  renderDungeonHint, renderGameOver, renderVictory, renderRealmClear,
 } from './ui';
 import {
   FloatingNumber, Particle, DroppedItem, HealthOrb, Projectile, LevelUpNotice, Input, GamePhase, BloodDecal,
 } from './types';
 import { dist, circlesOverlap, randRange } from './utils';
-import { MAP_W, MAP_H } from './constants';
+import { MAP_W, MAP_H, MAX_REALM } from './constants';
 import { updateCamera, addCameraShake } from './camera';
 import { Lighting } from './lighting';
 import { Weather } from './weather';
@@ -32,8 +32,19 @@ import {
 } from './game';
 import { audio } from './audio';
 import { assets } from './assets';
+import { rollBossLoot } from './loot';
 import { loadRun, hasRun, clearRun, recordResult, loadBest } from './save';
 import type { RunSnapshot, BestRecord } from './save';
+
+// Atmospheric tints for realms 2..7 (realm 1 is the untouched base palette).
+const REALM_TINTS = [
+  'rgba(60,140,160,0.16)',  // Realm 2 — teal frost
+  'rgba(120,70,180,0.17)',  // Realm 3 — violet dusk
+  'rgba(180,70,50,0.16)',   // Realm 4 — ember red
+  'rgba(190,150,60,0.15)',  // Realm 5 — pale gold
+  'rgba(40,60,170,0.18)',   // Realm 6 — deep night
+  'rgba(170,30,50,0.20)',   // Realm 7 — blood crimson
+];
 
 export class GameEngine {
   canvas: HTMLCanvasElement;
@@ -69,6 +80,9 @@ export class GameEngine {
   tick: number = 0;
 
   phase: GamePhase = 'playing';
+  realm: number = 1;
+  realmKills: number = 0; // kills earned inside the current realm (gates the boss)
+  realmClearAlpha: number = 0;
   inventoryOpen: boolean = false;
   lastWaveTime: number = Date.now();
 
@@ -140,6 +154,7 @@ export class GameEngine {
   // so re-equipping would not double-count — direct assignment avoids any
   // heal/side-effects and keeps the restore faithful to what was saved.
   private applyRun(s: RunSnapshot): void {
+    this.realm = s.realm ?? 1;
     const p = this.player;
     p.level = s.level;
     p.xp = s.xp;
@@ -234,6 +249,11 @@ export class GameEngine {
         // On end screens, any tap restarts the run
         if (this.phase === 'gameover' || this.phase === 'victory') {
           this.restart();
+          return;
+        }
+        // On the realm-clear screen, any tap enters the next realm
+        if (this.phase === 'realmclear') {
+          this.nextRealm();
           return;
         }
 
@@ -439,8 +459,8 @@ export class GameEngine {
       this.boss.update(dt, this.player, this.floaters, this.particles, this.projectiles);
     }
 
-    // Victory
-    if (this.boss?.dead) this.onVictory();
+    // Boss defeated — final victory on the last realm, otherwise advance
+    if (this.boss?.dead) this.onBossDefeated();
 
     // Projectiles
     updateProjectiles(this, dt);
@@ -549,6 +569,78 @@ export class GameEngine {
     if (this.player.dead) this.onGameOver();
   }
 
+  private onBossDefeated(): void {
+    if (this.phase !== 'playing') return;
+    // Guaranteed legendary reward — auto-equip if it beats current gear.
+    const reward = rollBossLoot();
+    if (reward) {
+      const existing = reward.slot === 'weapon' ? this.player.equippedWeapon : this.player.equippedArmor;
+      const newScore = (reward.damage ?? 0) + (reward.defense ?? 0) + (reward.critChance ?? 0) * 50;
+      const oldScore = existing ? ((existing.damage ?? 0) + (existing.defense ?? 0) + (existing.critChance ?? 0) * 50) : 0;
+      if (!existing || newScore > oldScore) {
+        this.player.equipItem(reward);
+        audio.play('pickup');
+      }
+      this.floaters.push({
+        x: this.player.x, y: this.player.y - 50,
+        value: 0, isCrit: false, damageType: 'physical',
+        alpha: 1, vy: -0.5, life: 240, maxLife: 240,
+        text: `👑 Botín legendario: ${reward.name}`,
+      });
+    }
+    if (this.realm >= MAX_REALM) {
+      this.onVictory();
+      return;
+    }
+    this.phase = 'realmclear';
+    this.realmClearAlpha = 0;
+    persistRun(this);
+    audio.stopMusic();
+    audio.startMusic();
+  }
+
+  // Advance to the next realm: keep the character, regenerate the world harder.
+  private nextRealm(): void {
+    this.realm++;
+    this.realmKills = 0;
+    const spawnX = MAP_W / 2;
+    const spawnY = MAP_H / 3;
+    this.player.x = spawnX;
+    this.player.y = spawnY;
+    this.player.stats.hp = this.player.stats.maxHp;
+    this.player.stats.energy = this.player.stats.maxEnergy;
+    this.enemies = [];
+    this.boss = null;
+    this.bossSpawned = false;
+    this.droppedItems = [];
+    this.healthOrbs = [];
+    this.floaters = [];
+    this.particles = [];
+    this.projectiles = [];
+    this.decals = [];
+    this.levelUpNotices = [];
+    this.phase = 'playing';
+    this.inventoryOpen = false;
+    this.realmClearAlpha = 0;
+    this.prevAttackFrames = 0;
+    this.cameraShakeFrames = 0;
+    this.cameraShakeStrength = 0;
+    this.lastWaveTime = Date.now();
+    this.grid = generateMap();
+    this.decorations = generateDecorations(this.grid);
+    spawnInitialEnemies(this);
+    this.lighting.init(this.grid);
+    this.weather.reset();
+    persistRun(this);
+    this.floaters.push({
+      x: this.player.x, y: this.player.y - 60,
+      value: 0, isCrit: false, damageType: 'ice',
+      alpha: 1, vy: -0.4, life: 220, maxLife: 220,
+      text: `❄ REINO ${this.realm} — los enemigos son más fuertes`,
+    });
+    if (this.musicStarted) audio.startMusic();
+  }
+
   private onVictory(): void {
     if (this.phase === 'victory') return;
     this.phase = 'victory';
@@ -578,9 +670,19 @@ export class GameEngine {
     ctx.fillStyle = '#0d1018';
     ctx.fillRect(0, 0, vpW, vpH);
 
-    if (this.phase === 'playing' || this.phase === 'victory') {
+    if (this.phase === 'playing' || this.phase === 'victory' || this.phase === 'realmclear') {
       // Map
       renderMap(ctx, this.grid, this.camX, this.camY, vpW, vpH, this.tick);
+
+      // Each realm past the first gets its own atmospheric tint over the terrain.
+      if (this.realm > 1) {
+        const tint = REALM_TINTS[Math.min(this.realm - 2, REALM_TINTS.length - 1)];
+        ctx.save();
+        ctx.globalCompositeOperation = 'overlay';
+        ctx.fillStyle = tint;
+        ctx.fillRect(0, 0, vpW, vpH);
+        ctx.restore();
+      }
 
       // Blood pools sit on the ground, above the tiles but below everything else
       drawDecals(ctx, this.decals, this.camX, this.camY, vpW, vpH);
@@ -682,6 +784,16 @@ export class GameEngine {
       // HUD
       if (!this.inventoryOpen) {
         renderHUD(ctx, vpW, vpH, this.player, this.boss, [], [], this.levelUpNotices, false);
+        // Realm indicator above the HUD panel
+        ctx.save();
+        ctx.fillStyle = '#8fd4ff';
+        ctx.font = 'bold 12px "Georgia", serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'alphabetic';
+        ctx.shadowColor = 'rgba(0,0,0,0.8)';
+        ctx.shadowBlur = 4;
+        ctx.fillText(`❄ REINO ${this.realm} / ${MAX_REALM}`, 12, vpH - 122);
+        ctx.restore();
       } else {
         renderInventory(ctx, vpW, vpH, this.player, this.droppedItems);
       }
@@ -693,6 +805,8 @@ export class GameEngine {
 
       if (this.phase === 'victory') {
         this.victoryAlpha = renderVictory(ctx, vpW, vpH, this.victoryAlpha, this.runStats, this.bestRecord);
+      } else if (this.phase === 'realmclear') {
+        this.realmClearAlpha = renderRealmClear(ctx, vpW, vpH, this.realmClearAlpha, this.realm);
       }
     } else if (this.phase === 'gameover') {
       this.gameOverAlpha = renderGameOver(ctx, vpW, vpH, this.gameOverAlpha, this.runStats, this.bestRecord);
@@ -780,10 +894,15 @@ export class GameEngine {
   handleClick(_screenX: number, _screenY: number): void {
     if (this.phase === 'gameover' || this.phase === 'victory') {
       this.restart();
+    } else if (this.phase === 'realmclear') {
+      this.nextRealm();
     }
   }
 
   restart(): void {
+    this.realm = 1;
+    this.realmKills = 0;
+    this.realmClearAlpha = 0;
     const spawnX = MAP_W / 2;
     const spawnY = MAP_H / 3;
     this.player = new Player(spawnX, spawnY);
@@ -830,6 +949,9 @@ export class GameEngine {
       // On end screens, [SPACE] restarts (matches the on-screen prompt)
       if ((this.phase === 'gameover' || this.phase === 'victory') && this.input.keys.has('Space')) {
         this.restart();
+      } else if (this.phase === 'realmclear' && this.input.keys.has('Space')) {
+        this.input.keys.delete('Space');
+        this.nextRealm();
       }
 
       updateCamera(this);

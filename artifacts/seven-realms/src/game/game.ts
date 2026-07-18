@@ -43,7 +43,7 @@ export function spawnEnemy(g: GameEngine, type: EnemyType, cx?: number, cy?: num
   x = clamp(x, 80, MAP_W - 80);
   y = clamp(y, 80, MAP_H - 80);
   if (!isSolid(g.grid, x, y)) {
-    g.enemies.push(new Enemy(x, y, type));
+    g.enemies.push(new Enemy(x, y, type, g.realm));
   }
 }
 
@@ -65,9 +65,11 @@ export function spawnWave(g: GameEngine): void {
 
 export function checkBossSpawn(g: GameEngine): void {
   if (g.bossSpawned) return;
-  if (g.player.kills >= 15 || g.player.level >= 4) {
+  // Kills within the current realm gate the boss (total level only counts in
+  // Realm 1, so later realms always require fighting through the new world).
+  if (g.realmKills >= 15 || (g.realm === 1 && g.player.level >= 4)) {
     g.bossSpawned = true;
-    g.boss = new Boss(DUNGEON_X, DUNGEON_Y);
+    g.boss = new Boss(DUNGEON_X, DUNGEON_Y, g.realm);
     g.boss.spawnRequestCallback = (type, x, y) => spawnEnemy(g, type, x, y);
     audio.play('bossRoar');
     audio.startBossMusic();
@@ -115,6 +117,7 @@ export function processDeadEnemies(g: GameEngine): void {
       audio.play('levelUp');
     }
     g.player.kills++;
+    g.realmKills++;
   }
   g.enemies = g.enemies.filter(e => !e.dead);
 
@@ -128,6 +131,7 @@ export function processDeadEnemies(g: GameEngine): void {
 export function snapshotPlayer(g: GameEngine): RunSnapshot {
   const p = g.player;
   return {
+    realm: g.realm,
     level: p.level,
     xp: p.xp,
     xpToNext: p.xpToNext,

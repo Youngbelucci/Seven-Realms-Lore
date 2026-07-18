@@ -20,13 +20,21 @@ export class Enemy extends Entity {
   wanderAngle: number = Math.random() * Math.PI * 2;
   stunFrames: number = 0;
 
-  constructor(x: number, y: number, type: EnemyType) {
+  constructor(x: number, y: number, type: EnemyType, realm: number = 1) {
     const stats = Enemy.statsFor(type);
+    // Realm scaling: each realm past the first makes enemies tougher and stronger.
+    const hpMul = 1 + (realm - 1) * 0.35;
+    const dmgMul = 1 + (realm - 1) * 0.22;
+    stats.hp = Math.round(stats.hp * hpMul);
+    stats.maxHp = stats.hp;
+    stats.damage = Math.round(stats.damage * dmgMul);
+    stats.defense += (realm - 1) * 2;
     super(x, y, Enemy.sizeFor(type), stats);
     this.type = type;
     this.attackRange = type === 'archer' ? ENEMY_ATTACK_RANGE_RANGED : ENEMY_ATTACK_RANGE_MELEE;
-    this.xpValue = Enemy.xpFor(type);
-    this.tier = Enemy.tierFor(type);
+    this.xpValue = Math.round(Enemy.xpFor(type) * (1 + (realm - 1) * 0.3));
+    // Higher realms drop better loot (tier feeds the rarity weights).
+    this.tier = Enemy.tierFor(type) + Math.min(realm - 1, 2);
   }
 
   static statsFor(type: EnemyType) {

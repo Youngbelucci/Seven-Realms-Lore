@@ -17,24 +17,31 @@ export class Boss extends Entity {
   introFrames: number = 90;
   defeated: boolean = false;
   spawnRequestCallback: ((type: EnemyType, x: number, y: number) => void) | null = null;
+  private phase2Hp: number;
+  private phase3Hp: number;
 
-  constructor(x: number, y: number) {
+  constructor(x: number, y: number, realm: number = 1) {
+    // Realm scaling: the Guardian grows stronger in each new realm.
+    const hpMul = 1 + (realm - 1) * 0.4;
+    const dmgMul = 1 + (realm - 1) * 0.2;
     super(x, y, BOSS_SIZE, {
-      hp: BOSS_HP,
-      maxHp: BOSS_HP,
+      hp: Math.round(BOSS_HP * hpMul),
+      maxHp: Math.round(BOSS_HP * hpMul),
       energy: 0,
       maxEnergy: 0,
-      damage: 20,
-      defense: 15,
-      speed: 58,
+      damage: Math.round(20 * dmgMul),
+      defense: 15 + (realm - 1) * 3,
+      speed: 58 + (realm - 1) * 3,
       critChance: 0.07,
       critMultiplier: 2.0,
     });
+    this.phase2Hp = Math.round(BOSS_PHASE2_HP * hpMul);
+    this.phase3Hp = Math.round(BOSS_PHASE3_HP * hpMul);
   }
 
   getPhase(): BossPhase {
-    if (this.stats.hp > BOSS_PHASE2_HP) return 1;
-    if (this.stats.hp > BOSS_PHASE3_HP) return 2;
+    if (this.stats.hp > this.phase2Hp) return 1;
+    if (this.stats.hp > this.phase3Hp) return 2;
     return 3;
   }
 
